@@ -1,0 +1,16 @@
+{
+  "name": "universidade-mikinha",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Jogo de matemática da Mikinha: aventuras para aprender as operações do 3º e do 4º ano.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^6.4.4",
+    "vite-plugin-pwa": "^1.3.0"
+  }
+}

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b6b74">
+<meta name="description" content="Jogo de matemática da Mikinha: aventuras para aprender as operações do 3º e do 4º ano.">
+<title>Universidade da Mikinha</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;700;800;900&display=swap">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<div class="stage">
+  <!-- TITLE -->
+  <section class="panel title" id="sTitle">
+    <canvas class="heroCv" id="titleCv" width="220" height="150" aria-hidden="true"></canvas>
+    <div class="logo">Mikinha<small>e o Reino das Ilhas</small></div>
+    <p>O Dragão Guloso pegou tudo do reino e não divide com ninguém! A Princesa Mikinha e o Bluu vão viajar pelas ilhas para devolver tudo de um jeito justo.</p>
+    <button class="btn gold" data-act="map" id="playBtn">Jogar ▶</button>
+  </section>
+
+  <!-- MAP -->
+  <section id="sMap" hidden>
+    <div class="stage">
+      <div class="panel bar">
+        <h2>🗺️ Mapa do Reino</h2>
+        <div class="row">
+          <span class="pill" id="mTro">🏆 0</span><span class="pill" id="mCoin">🪙 0</span>
+          <button class="btn alt small" data-act="shop">🛍️ Loja</button>
+          <button class="btn alt small" data-act="road">🏆 Trilha</button>
+          <button class="btn alt small" data-act="teacher">🔑 Professor</button>
+        </div>
+      </div>
+      <div class="panel bar" id="roadMini"></div>
+      <div class="islands" id="islands"></div>
+    </div>
+  </section>
+
+  <!-- SHOP -->
+  <section id="sShop" hidden>
+    <div class="stage">
+      <div class="panel bar"><div class="row"><button class="btn alt small" data-act="map">⬅ Mapa</button><h2>🛍️ Loja</h2></div><span class="pill" id="sCoin">🪙 0</span></div>
+      <div class="shopwrap">
+        <div class="panel preview"><canvas id="shopCv" width="240" height="220" style="width:100%;max-width:240px;height:auto" aria-hidden="true"></canvas><div class="muted">Assim a Mikinha está agora</div><button class="btn alt small" data-act="emote">Ver dancinha</button></div>
+        <div class="panel"><div class="cats" id="cats"></div><div class="items" id="shopItems"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROAD -->
+  <section id="sRoad" hidden>
+    <div class="stage">
+      <div class="panel bar"><div class="row"><button class="btn alt small" data-act="map">⬅ Mapa</button><h2>🏆 Trilha de Troféus</h2></div><span class="pill" id="rTro">🏆 0</span></div>
+      <div class="panel road" id="roadList"></div>
+    </div>
+  </section>
+
+  <!-- TEACHER -->
+  <section id="sTeacher" hidden>
+    <div class="stage">
+      <div class="panel bar"><div class="row"><button class="btn alt small" data-act="map">⬅ Mapa</button><h2>🔑 Modo professor</h2></div></div>
+      <div class="tgrid">
+        <div class="panel"><h3>Relatório por habilidade</h3><div id="repSkills" class="stat" style="margin-top:10px"></div></div>
+        <div class="panel"><h3>Últimos 7 dias</h3><div class="muted">Barra azul: respostas. Verde: acertos de primeira.</div><div class="bars" id="repDays"></div><div class="muted" id="repTime" style="margin-top:8px"></div></div>
+        <div class="panel"><h3>Contas que ela mais erra</h3><div id="repMiss" style="margin-top:8px; line-height:1.7"></div></div>
+      </div>
+      <div class="panel">
+        <h3>Ajustes</h3>
+        <p class="muted">O jogo ajusta sozinho: a cada 5 respostas, com 4 ou mais certas de primeira sobe um degrau, e com 2 ou menos desce um. Você pode mudar o degrau à mão aqui.</p>
+        <div class="tgrid" id="selects" style="margin-top:6px"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn alt small" data-act="unlockall" id="unlockBtn">Liberar todas as ilhas: não</button>
+          <button class="btn coral small" data-act="wipe" id="wipeBtn">Apagar todo o progresso</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Backup do progresso</h3>
+        <p class="muted">Copie o código e guarde onde quiser (num e-mail ou no bloco de notas). Para restaurar, cole o código e clique em Restaurar.</p>
+        <label class="muted" for="backupTxt">Código de backup</label>
+        <textarea id="backupTxt" rows="3" style="width:100%;font:inherit;font-size:.8rem;border-radius:10px;border:2px solid var(--sand-edge);padding:8px;background:var(--white);color:var(--ink)"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="btn alt small" data-act="backup">📋 Copiar código de backup</button>
+          <button class="btn alt small" data-act="restore">♻️ Restaurar deste código</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>O que cada degrau pede</h3>
+        <div class="tablewrap" style="margin-top:8px"><table class="steps" id="stepTable"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GAME -->
+  <section id="sGame" hidden>
+    <div class="stage">
+      <div class="panel gbar">
+        <div class="row"><button class="btn alt small" data-act="leave">⬅ Mapa</button><h2 id="gName"></h2></div>
+        <div class="row"><span class="pill" id="gInfo"></span><button class="btn alt small" data-act="hint">💡 Dica</button><button class="btn alt small" data-act="sound" id="tSound">🎵</button><button class="btn alt small" data-act="voice" id="tVoice">🗣️</button></div>
+      </div>
+      <div class="panel bubble"><canvas class="bluuIc" id="bluuIc" width="56" height="56" aria-hidden="true"></canvas><div class="say" id="say" aria-live="polite"></div><button class="btn alt small" data-act="speak" aria-label="Ouvir de novo">🔊</button></div>
+      <div id="stageBox"></div>
+      <div class="panel" id="askBox" hidden></div>
+      <div class="touch" id="touch"></div>
+    </div>
+  </section>
+</div>
+
+<div class="overlay" id="overlay" hidden><div class="panel card" id="ovCard"></div></div>
+<div class="toasts" id="toasts"></div>
+<div id="confetti"></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
