@@ -20,7 +20,10 @@ Todo `git push` na branch `main` publica sozinho no GitHub Pages, pelo workflow 
 - `index.html`: telas do jogo (título, mapa, loja, trilha, professor, fase).
 - `src/game.js`: o jogo (as ilhas, a dificuldade adaptativa e as telas).
 - `src/storage.js`: onde o progresso é salvo. O jogo só fala com este módulo, então o salvamento na nuvem entra aqui sem mexer no jogo.
-- `src/main.js`: ponto de entrada; liga o app instalável (service worker).
+- `src/cloud.js`: salvamento na nuvem (Firebase). O pai ou a mãe entra com Google no Modo professor e o progresso fica em `familias/{uid}/perfis/mikinha`. A cópia mais nova sempre vence.
+- `src/firebase-config.js`: configuração pública do projeto Firebase (não é segredo).
+- `firestore.rules`: regras de segurança do banco. Cada conta só lê e grava os próprios dados. Se mudar este arquivo, cole o conteúdo novo na aba Regras do Firestore no console do Firebase.
+- `src/main.js`: ponto de entrada; liga o app instalável (service worker) e carrega a nuvem.
 - `public/`: ícones do app.
 
 ## Modo de teste
