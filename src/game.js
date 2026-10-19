@@ -70,7 +70,8 @@ const SECRETS = ['mar','coroa'];
 const fresh = () => ({ v:2, unlocked:1, trophies:0, coins:0, owned:['rosa','nenhum','semrastro','pulinho'],
   equip:{ outfit:'rosa', hat:'nenhum', trail:'semrastro', emote:'pulinho' }, road:[], plays:{},
   math:Object.fromEntries(Object.keys(SKILLS).map(k => [k, { step:1, win:[] }])), game:{ step:1, win:[] },
-  stats:{ days:{}, skill:{}, miss:{} }, vila:{ cash:0, up:[] }, sound:true, voice:false, teacher:false });
+  stats:{ days:{}, skill:{}, miss:{} }, vila:{ cash:0, up:[] }, sound:true, voice:false, teacher:false,
+  review:{}, focus:[], mission:null, streak:{ last:null, n:0 } });
 let save = fresh();
 function adopt(s) {
   if (!s || s.v !== 2) return false;
@@ -139,6 +140,7 @@ function record(skill, ok, { fast = false, hint = false, key = '' } = {}) {
   st.skill[skill] = st.skill[skill] || { a:0, c:0 }; st.skill[skill].a++; if (ok) st.skill[skill].c++;
   if (!ok && key) st.miss[key] = (st.miss[key] || 0) + 1;
   if (ok && RUN) RUN.first++;
+  if (RUN) { const p = RUN.per[skill] = RUN.per[skill] || { a:0, c:0 }; p.a++; if (ok) p.c++; }
   if (RUN) RUN.total++;
   const S = save.math[skill];
   S.win.push(!ok ? 0 : hint ? .5 : fast ? 1.2 : 1); if (S.win.length > 5) S.win.shift();
@@ -480,7 +482,13 @@ function setTouch(kind) {
 }
 function makeCanvas(W, H) { const box = $('#stageBox'); box.innerHTML = ''; $('#sGame').classList.add('canvasMode'); const cv = document.createElement('canvas'); cv.width = W; cv.height = H; cv.className = 'cv'; box.append(cv); return { cv, c:cv.getContext('2d') }; }
 function canvasPoint(cv, e) { const r = cv.getBoundingClientRect(); return { x:(e.clientX - r.left) * cv.width / r.width, y:(e.clientY - r.top) * cv.height / r.height }; }
-function loop(fn) { let last = performance.now(), id; const step = now => { const dt = Math.min(.05, (now - last) / 1000); last = now; fn(dt, now / 1000); id = requestAnimationFrame(step); }; id = requestAnimationFrame(step); return () => cancelAnimationFrame(id); }
+/* returns a stop function; stopping from inside fn also works (no frame is scheduled after it) */
+function loop(fn) {
+  let last = performance.now(), id, stopped = false;
+  const step = now => { if (stopped) return; const dt = Math.min(.05, (now - last) / 1000); last = now; fn(dt, now / 1000); if (!stopped) id = requestAnimationFrame(step); };
+  id = requestAnimationFrame(step);
+  return () => { stopped = true; cancelAnimationFrame(id); };
+}
 const blocked = () => !$('#overlay').hidden || !!activeAsk;
 
 /* ================= SCREENS ================= */
@@ -504,10 +512,17 @@ function renderUni() {
   HUB = 'uni'; show('sUni');
   $('#uTro').textContent = `🏆 ${save.trophies}`; $('#uCoin').textContent = `🪙 ${save.coins}`;
   $('#uniRoad').innerHTML = roadMiniHTML();
+  const M = mission(), next = M.done.indexOf(false), S = save.streak, live = S.last === today() || S.last === today(1);
+  $('#missionCard').innerHTML = `<div class="row" style="justify-content:space-between"><h3>⭐ Missão do Dia</h3>${live && S.n ? `<span class="pill">🔥 ${S.n} ${S.n === 1 ? 'dia' : 'dias seguidos'}</span>` : ''}</div>
+    <div class="stages">${missionStagesHTML()}</div>
+    ${next >= 0 ? `<button class="btn gold" data-act="mission">${next === 0 ? 'Começar a missão ▶' : `Continuar: etapa ${next + 1} de 3 ▶`}</button>`
+      : M.claimed ? '<p class="muted" style="margin:0">Missão de hoje completa! Amanhã tem outra. Enquanto isso, você pode jogar livre nas faculdades.</p>'
+      : '<button class="btn gold" data-act="mclaim">Abrir o baú da missão 🎁</button>'}`;
   $('#facs').innerHTML = FACS.map(f => {
-    const step = f.reino ? Math.round((mstep('share') + mstep('group') + mstep('rem') + mstep('chave')) / 4) : mstep(f.skill);
+    const sks = f.reino ? ['share', 'group', 'rem', 'chave'] : [f.skill];
+    const step = Math.round(sks.reduce((a, s) => a + mstep(s), 0) / sks.length);
     const sub = f.reino ? `Nível médio ${step} de 10 · 7 ilhas` : `Nível ${step} de 10: ${stepRange(f.skill, step)}`;
-    return `<button class="island" data-fac="${f.id}"><span class="ic">${f.icon}</span><span class="nm">${f.name}</span><span class="sk">${f.blurb}</span>${levelBar(step)}<span class="muted">${sub}</span></button>`;
+    return `<button class="island" data-fac="${f.id}"><span class="ic">${f.icon}</span><span class="nm">${f.name}</span><span class="sk">${f.blurb}</span>${levelBar(step)}<span class="muted">${sub}</span><span class="medals">${sks.map(s => `<span title="${SKILLS[s]}: ${medal(s).n}">${medal(s).e}</span>`).join('')}</span></button>`;
   }).join('');
 }
 function renderFac(id) {
@@ -586,7 +601,8 @@ function renderTeacher() {
   const st = save.stats;
   $('#repSkills').innerHTML = Object.entries(SKILLS).map(([k, n]) => {
     const s = st.skill[k] || { a:0, c:0 }, pct = s.a ? Math.round(s.c / s.a * 100) : 0;
-    return `<span>${n} · degrau ${save.math[k].step}</span><span>${s.a ? `${pct}% de ${s.a}` : 'ainda não jogou'}</span><div class="meter"><i style="width:${pct}%"></i></div>`;
+    const m = medal(k), r = rev(k), dueTxt = !r.due ? '' : r.due <= today() ? ' · revisar hoje' : ` · revisar em ${r.due.slice(8)}/${r.due.slice(5, 7)}`;
+    return `<span>${m.e} ${n} · degrau ${save.math[k].step}<br><span class="muted">${m.n}${dueTxt}</span></span><span>${s.a ? `${pct}% de ${s.a}` : 'ainda não jogou'}</span><div class="meter"><i style="width:${pct}%"></i></div>`;
   }).join('') + `<span>Habilidade no jogo (pular, desviar)</span><span>degrau ${save.game.step}</span>`;
   const days = [...Array(7)].map((_, i) => today(6 - i)), mx = Math.max(1, ...days.map(d => st.days[d]?.a || 0));
   $('#repDays').innerHTML = days.map(d => { const x = st.days[d] || { a:0, c:0 }; return `<div class="b"><span>${x.a ? Math.round(x.c / x.a * 100) + '%' : ''}</span><div style="display:flex;gap:2px;align-items:flex-end;height:100px;width:100%;justify-content:center"><i style="height:${x.a / mx * 100}%"></i><i class="ok" style="height:${x.c / mx * 100}%"></i></div><span>${d.slice(8)}/${d.slice(5, 7)}</span></div>`; }).join('');
@@ -597,6 +613,7 @@ function renderTeacher() {
   $('#selects').innerHTML = Object.entries(SKILLS).map(([k, n]) => `<label class="sel" for="st-${k}">${n}<select id="st-${k}" data-step="${k}">${[...Array(10)].map((_, i) => `<option value="${i + 1}" ${save.math[k].step === i + 1 ? 'selected' : ''}>Degrau ${i + 1}</option>`).join('')}</select></label>`).join('')
     + `<label class="sel" for="st-game">Habilidade no jogo<select id="st-game" data-step="game">${[...Array(10)].map((_, i) => `<option value="${i + 1}" ${save.game.step === i + 1 ? 'selected' : ''}>Degrau ${i + 1}</option>`).join('')}</select></label>`;
   $('#unlockBtn').textContent = `Liberar todas as ilhas: ${save.teacher ? 'sim' : 'não'}`;
+  $('#focusBox').innerHTML = ORDER.map(k => `<label for="fo-${k}"><input type="checkbox" id="fo-${k}" data-focus="${k}" ${save.focus.includes(k) ? 'checked' : ''}> ${SKILLS[k]}</label>`).join('');
   let h = `<tr><th>Degrau</th>${Object.values(SKILLS).map(n => `<th>${n}</th>`).join('')}</tr>`;
   for (let s = 1; s <= 10; s++) h += `<tr><td><b>${s}</b></td>${Object.keys(SKILLS).map(k => `<td>${stepRange(k, s)}</td>`).join('')}</tr>`;
   $('#stepTable').innerHTML = h;
@@ -604,19 +621,19 @@ function renderTeacher() {
 
 /* ================= GAME RUNNER ================= */
 /** I: an island of the division kingdom or a faculty mode; idx: its position in ISLANDS (-1 for faculty modes) */
-function enterIsland(I, idx = -1) {
-  LAST = { I, idx };
+function enterIsland(I, idx = -1, missionStage = null) {
+  LAST = { I, idx, missionStage };
   show('sGame'); bluuIcon(); refreshToggles();
   $('#sGame').classList.remove('canvasMode');
-  $('#gName').textContent = `${I.icon} ${I.name}`; $('#gInfo').textContent = ''; $('#stageBox').innerHTML = ''; $('#askBox').hidden = true; $('#touch').innerHTML = '';
+  $('#gName').textContent = `${missionStage !== null ? `⭐ ${missionStage + 1}/3 · ` : ''}${I.icon} ${I.name}`; $('#gInfo').textContent = ''; $('#stageBox').innerHTML = ''; $('#askBox').hidden = true; $('#touch').innerHTML = '';
   $('#say').textContent = '';
   overlay(`<div class="big">${I.icon}</div><h2>${I.name}</h2><p>${I.intro}</p><div class="ctrls">${I.ctrl.map(c => `<span>${c}</span>`).join('')}</div><button class="btn gold" data-act="begin">Jogar ▶</button>`);
   if (save.voice) speak(I.intro);
 }
 function beginIsland() {
   closeOverlay();
-  const { I, idx } = LAST;
-  RUN = { island:I, idx, first:0, total:0, secret:false, gameOk:0 };
+  const { I, idx, missionStage } = LAST;
+  RUN = { island:I, idx, missionStage, first:0, total:0, secret:false, gameOk:0, per:{} };
   CUR = GAMES[I.game]();
 }
 function stopGame() { if (CUR) { CUR.stop(); CUR = null; } activeAsk = null; $('#askBox').hidden = true; for (const k in K) K[k] = 0; }
@@ -625,6 +642,15 @@ function finishPhase(extraText = '') {
   const tro = 6 + Math.min(8, R.first) + (R.secret ? 3 : 0), coins = 10 + R.first * 2;
   save.plays[I.id] = (save.plays[I.id] || 0) + 1;
   if (R.idx >= 0) save.unlocked = Math.max(save.unlocked, R.idx + 2);
+  const medalUps = [];
+  for (const [sk, p] of Object.entries(R.per)) { const before = medal(sk).k; updateReview(sk, p.c / p.a); if (medal(sk).k > before && medal(sk).k >= 2) medalUps.push(sk); }
+  let missionHTML = '';
+  if (R.missionStage !== null && save.mission && save.mission.date === today()) {
+    save.mission.done[R.missionStage] = true;
+    const next = save.mission.done.indexOf(false);
+    missionHTML = `<div class="stages">${missionStagesHTML()}</div>`
+      + (next >= 0 ? `<button class="btn gold" data-act="mnext">Próxima etapa da missão ➜</button>` : `<button class="btn gold" data-act="mclaim">Abrir o baú da missão 🎁</button>`);
+  }
   save.coins += coins; addTrophies(tro); persist();
   sfx.level(); confetti(90);
   const nextI = R.idx >= 0 ? ISLANDS[R.idx + 1] : null, newly = nextI && !nextI.soon && save.plays[I.id] === 1;
@@ -632,11 +658,82 @@ function finishPhase(extraText = '') {
     <h2>Fase completa!</h2><p>${extraText}</p>
     <div class="row" style="justify-content:center"><span class="pill">🏆 +${tro}</span><span class="pill">🪙 +${coins}</span>${R.secret ? '<span class="pill">🧰 Baú secreto!</span>' : ''}</div>
     <p class="muted">Acertou de primeira ${R.first} de ${R.total}.</p>
+    ${medalUps.map(sk => `<p><b>${medal(sk).e} Medalha nova em ${SKILLS[sk]}: ${medal(sk).n}!</b></p>`).join('')}
     ${newly ? `<p>Nova ilha aberta: <b>${nextI.icon} ${nextI.name}</b></p>` : ''}
-    <div class="row" style="justify-content:center"><button class="btn gold" data-act="again">Jogar de novo</button><button class="btn alt" data-act="map">Voltar</button></div>`);
+    ${missionHTML || `<div class="row" style="justify-content:center"><button class="btn gold" data-act="again">Jogar de novo</button><button class="btn alt" data-act="map">Voltar</button></div>`}`);
+  if (medalUps.length) setTimeout(() => sfx.secret(), 700);
   ovStop = heroScene($('#emoteCv'), { emote:save.equip.emote });
   RUN = null;
 }
+/* ================= MASTERY, SPACED REVIEW AND THE DAILY MISSION ================= */
+// curriculum order: when nothing else decides, earlier skills come first
+const ORDER = ['add', 'sub', 'mul', 'share', 'group', 'rem', 'fact', 'chave'];
+// Leitner boxes: a skill in box n comes back for review after GAPS[n] days
+const GAPS = [0, 1, 2, 4, 7, 14];
+const rev = sk => save.review[sk] || (save.review[sk] = { box:0, due:null, seen:0 });
+function updateReview(sk, acc) {
+  const r = rev(sk); r.seen++;
+  if (acc >= .8) r.box = Math.min(5, r.box + 1); else if (acc < .6) r.box = Math.max(0, r.box - 1);
+  r.due = today(-GAPS[r.box]);
+}
+/** medal combines how well it sticks over time (review box) with how far the difficulty climbed */
+function medal(sk) {
+  const r = rev(sk), st = mstep(sk);
+  if (!r.seen) return { e:'⚪', n:'Ainda não começou', k:0 };
+  if (r.box >= 4 && st >= 8) return { e:'🥇', n:'Ouro', k:4 };
+  if (r.box >= 2 && st >= 5) return { e:'🥈', n:'Prata', k:3 };
+  if (r.box >= 1) return { e:'🥉', n:'Bronze', k:2 };
+  return { e:'🌱', n:'Aprendendo', k:1 };
+}
+/** the game where a skill is practiced inside a mission */
+function missionIsland(sk, avoidGame) {
+  const div = { share:[0, 4], group:[5], rem:[1], chave:[2] };
+  if (div[sk]) { const opts = div[sk].filter(i => ISLANDS[i].game !== avoidGame); return { ...ISLANDS[pick(opts.length ? opts : div[sk])] }; }
+  if (sk === 'fact') return { id:'fact-arena', name:'Arena da Tabuada', icon:'⚔️', genre:'Batalha', game:'arena', ctrl:MODES.arena.ctrl, intro:'Acerte o robô com a divisão certa! Pense na tabuada: 3 × 4 = 12, então 12 ÷ 3 = 4.', skills:['fact'], verb:'dividir' };
+  const f = FACS.find(x => x.skill === sk), modes = ['arena', 'caverna'].filter(m => MODES[m].game !== avoidGame);
+  return facIsland(f, pick(modes));
+}
+function buildMission() {
+  const seen = ORDER.filter(s => rev(s).seen);
+  const acc = s => { const x = save.stats.skill[s]; return x && x.a ? x.c / x.a : 1; };
+  const due = seen.filter(s => rev(s).due && rev(s).due <= today()).sort((a, b) => rev(a).due.localeCompare(rev(b).due));
+  const A = due[0] || [...seen].sort((a, b) => acc(a) - acc(b))[0] || 'add';
+  const focus = (save.focus || []).filter(s => s !== A);
+  const B = focus.length ? pick(focus) : ORDER.filter(s => s !== A).sort((a, b) => rev(a).box - rev(b).box || ORDER.indexOf(a) - ORDER.indexOf(b))[0];
+  const ia = missionIsland(A), ib = missionIsland(B, ia.game);
+  const boss = { id:'missao-castelo', name:'Desafio da Missão', icon:'🏰', genre:'Chefão', game:'castelo', ctrl:MODES.castelo.ctrl,
+    intro:'O desafio final da missão! O Dragão Guloso vai misturar tudo o que você treinou hoje. Desvie do fogo e acerte as contas!', skills:[A, B], verb:'fazer contas' };
+  return { date:today(), stages:[
+    { skill:A, kind:seen.length ? 'Revisão' : 'Aquecimento', I:ia },
+    { skill:B, kind:focus.length ? 'Foco da prova' : 'Aprender', I:ib },
+    { skill:null, kind:'Desafio', I:boss }
+  ], done:[false, false, false], claimed:false };
+}
+function mission() { if (!save.mission || save.mission.date !== today()) { save.mission = buildMission(); persist(); } return save.mission; }
+function missionStagesHTML() {
+  const M = mission();
+  return M.stages.map((s, i) => `<div class="stg ${M.done[i] ? 'done' : ''}"><span class="tag">${i + 1}. ${s.kind}</span><span style="font-size:1.8rem" aria-hidden="true">${M.done[i] ? '✅' : s.I.icon}</span><b>${s.skill ? SKILLS[s.skill] : 'Tudo misturado'}</b><span class="muted">${s.I.name}</span></div>`).join('');
+}
+function startMissionStage() {
+  const M = mission(), i = M.done.indexOf(false);
+  if (i < 0) return renderUni();
+  HUB = 'uni'; enterIsland(M.stages[i].I, -1, i);
+}
+function claimMission() {
+  const M = mission(); if (M.claimed || M.done.includes(false)) return renderUni();
+  M.claimed = true;
+  const yest = today(1), S = save.streak;
+  S.n = S.last === yest ? S.n + 1 : S.last === today() ? S.n : 1; S.last = today();
+  save.coins += 30; addTrophies(10);
+  const left = SECRETS.filter(s => !save.owned.includes(s));
+  if (left.length && Math.random() < .5) grant(pick(left), 'Baú da missão'); else save.coins += 20;
+  persist(); sfx.level(); confetti(120);
+  overlay(`<div class="big">🎁</div><h2>Missão do Dia completa!</h2>
+    <div class="row" style="justify-content:center"><span class="pill">🏆 +10</span><span class="pill">🪙 +30</span><span class="pill">🔥 ${S.n} ${S.n === 1 ? 'dia' : 'dias seguidos'}</span></div>
+    <p>${S.n >= 2 ? `Você fez a missão ${S.n} dias seguidos! Volte amanhã para continuar a sequência.` : 'Volte amanhã para uma missão nova e comece uma sequência de dias!'}</p>
+    <button class="btn gold" data-act="uni">Voltar à Universidade</button>`);
+}
+
 function refreshToggles() { $('#tSound').textContent = save.sound ? '🎵' : '🔇'; $('#tVoice').textContent = save.voice ? '🗣️' : '🤐'; $('#tSound').setAttribute('aria-label', save.sound ? 'Som ligado' : 'Som desligado'); $('#tVoice').setAttribute('aria-label', save.voice ? 'Voz ligada' : 'Voz desligada'); }
 setInterval(() => {
   if ($('#sGame').hidden || document.visibilityState !== 'visible') return;
@@ -1533,6 +1630,8 @@ document.addEventListener('click', ev => {
   if (act === 'leave') { stopGame(); RUN = null; return goHub(); }
   if (act === 'uni') { closeOverlay(); stopGame(); RUN = null; return renderUni(); }
   if (act === 'begin') return beginIsland();
+  if (act === 'mission' || act === 'mnext') { closeOverlay(); stopGame(); RUN = null; return startMissionStage(); }
+  if (act === 'mclaim') { closeOverlay(); return claimMission(); }
   if (act === 'again') { closeOverlay(); return enterIsland(LAST.I, LAST.idx); }
   if (act === 'shop') return renderShop();
   if (act === 'road') return renderRoad();
@@ -1559,6 +1658,13 @@ document.addEventListener('click', ev => {
   }
 });
 document.addEventListener('change', ev => {
+  const f = ev.target.dataset && ev.target.dataset.focus;
+  if (f) {
+    save.focus = save.focus.filter(x => x !== f); if (ev.target.checked) save.focus.push(f);
+    // today's mission picks up the new focus if it has not started yet
+    if (save.mission && !save.mission.done.some(Boolean)) save.mission = null;
+    persist(); toast(save.focus.length ? `Foco da prova: ${save.focus.map(x => SKILLS[x]).join(', ')}` : 'Sem foco de prova.'); return;
+  }
   const k = ev.target.dataset && ev.target.dataset.step; if (!k) return;
   if (k === 'game') { save.game.step = +ev.target.value; save.game.win = []; } else { save.math[k].step = +ev.target.value; save.math[k].win = []; }
   persist(); toast('Degrau alterado.'); renderTeacher();

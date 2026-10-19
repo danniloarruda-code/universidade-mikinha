@@ -191,6 +191,16 @@ table.steps{border-collapse:collapse; width:100%; min-width:520px; font-size:.88
 table.steps th,table.steps td{padding:6px 8px; border-bottom:2px solid var(--sand-deep); text-align:left; vertical-align:top}
 table.steps th{background:var(--sand-deep); font-family:var(--display); font-weight:400}
 
+/* daily mission */
+.mission{display:flex; flex-direction:column; gap:10px; border-color:var(--gold-dark); align-items:stretch}
+.mission > .btn{align-self:center}
+.stages{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; width:100%}
+.stg{display:flex; flex-direction:column; align-items:center; gap:2px; text-align:center; background:var(--white); border:3px solid var(--sand-edge); border-radius:16px; padding:8px; font-size:.95rem}
+.stg.done{border-color:var(--leaf); background:var(--sand-deep)}
+.medals{font-size:1.2rem; letter-spacing:3px}
+.focus{display:flex; flex-wrap:wrap; gap:8px}
+.focus label{display:flex; gap:6px; align-items:center; background:var(--white); border:2px solid var(--sand-edge); border-radius:12px; padding:6px 10px; cursor:pointer}
+
 /* lanchonete */
 .tag{display:block; font-size:.8rem; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-soft)}
 .empty{color:var(--ink-soft)}
