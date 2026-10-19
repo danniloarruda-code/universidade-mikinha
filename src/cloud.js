@@ -70,7 +70,7 @@ panel.innerHTML = `<h3>☁️ Salvar na nuvem</h3><p class="muted" id="cloudMsg"
 document.querySelector('#sTeacher .stage .bar').after(panel);
 const pill = document.createElement('span');
 pill.className = 'pill'; pill.id = 'cloudPill';
-document.querySelector('#mTro').before(pill);
+document.querySelector('#uTro').before(pill);
 
 panel.querySelector('#cloudIn').onclick = signIn;
 panel.querySelector('#cloudOut').onclick = () => { flush(); signOut(auth); };

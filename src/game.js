@@ -1,4 +1,5 @@
 import { loadLocal, saveLocal, toBackupCode, fromBackupCode } from './storage.js';
+import { EXTRA_SKILLS } from './skills.js';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
@@ -13,7 +14,7 @@ const DEBUG = location.hash === '#debug';
 if (DEBUG) { window.requestAnimationFrame = cb => setTimeout(() => cb(performance.now()), 16); window.cancelAnimationFrame = id => clearTimeout(id); }
 
 /* ================= DATA ================= */
-const SKILLS = { share:'Repartir', rem:'Sobras (resto)', group:'Fazer grupos', fact:'Tabuada', chave:'Conta na chave' };
+const SKILLS = { add:'Adição', sub:'Subtração', mul:'Multiplicação', share:'Divisão: repartir', rem:'Divisão: sobras (resto)', group:'Divisão: fazer grupos', fact:'Divisão pela tabuada', chave:'Divisão: conta na chave' };
 const FRIENDS = [['🐸','Sapinho'],['🐰','Coelhinha'],['🦊','Raposinha'],['🐢','Tartaruga'],['🐒','Macaquinho'],['🦄','Unicórnio'],['🐱','Gatinha'],['🐧','Pinguim'],['🐨','Coalinha']];
 const ISLANDS = [
   { id:'praia', name:'Praia das Conchas', icon:'🏝️', genre:'Aventura', skill:'Repartir', game:'praia', ctrl:['⬅⬆⬇➡ ou WASD: andar','Clique no chão: andar até lá','Espaço ou clique na casinha: entregar'],
@@ -31,6 +32,25 @@ const ISLANDS = [
   { id:'castelo', name:'Castelo do Dragão', icon:'🏰', genre:'Chefão', skill:'Desafio final', game:'castelo', ctrl:['⬅⬆⬇➡ ou WASD: andar','Clique no chão: andar até lá','Encoste na bola com a resposta certa'],
     intro:'A batalha final! Desvie do fogo do Dragão Guloso. Quando ele cansar, encoste na bola com a resposta certa para acertá-lo. Acerte 6 vezes para ele virar seu amigo!' }
 ];
+/* The university: one faculty per operation. Division keeps its own kingdom of islands;
+   the others reuse the quiz-style modes (Arena, Caverna, Castelo) with their own skill. */
+const FACS = [
+  { id:'soma', name:'Faculdade da Adição', short:'Adição', icon:'➕', skill:'add', verb:'somar', blurb:'Juntar, somar e o famoso "vai um".' },
+  { id:'subt', name:'Faculdade da Subtração', short:'Subtração', icon:'➖', skill:'sub', verb:'subtrair', blurb:'Tirar, comparar e pegar emprestado.' },
+  { id:'mult', name:'Faculdade da Multiplicação', short:'Multiplicação', icon:'✖️', skill:'mul', verb:'multiplicar', blurb:'Tabuadas e contas de vezes.' },
+  { id:'divi', name:'Faculdade da Divisão', short:'Divisão', icon:'➗', reino:true, blurb:'O Reino das Ilhas: repartir, grupos, sobras e a conta na chave.' }
+];
+const MODES = {
+  arena:{ game:'arena', name:'Arena', icon:'⚔️', genre:'Batalha', ctrl:['⬅⬆⬇➡ ou WASD: andar','Toque ou clique no robô: atirar','Espaço: atirar no robô mais perto'],
+    intro:f => `Acerte o robô que tem a conta certa e junte 10 gemas antes do tempo acabar! Hoje as contas são de ${f.short.toLowerCase()}.` },
+  caverna:{ game:'caverna', name:'Caverna', icon:'🕯️', genre:'Parkour', ctrl:['⬅ ➡: correr','⬆ ou Espaço: pular'],
+    intro:f => `Corra e pule pela caverna! Para abrir cada portão, pule embaixo do bloco com o resultado certo da conta de ${f.short.toLowerCase()}.` },
+  castelo:{ game:'castelo', name:'Castelo', icon:'🏰', genre:'Chefão', ctrl:['⬅⬆⬇➡ ou WASD: andar','Toque no chão: andar até lá','Encoste na bola com a resposta certa'],
+    intro:f => `O Dragão Guloso não sabe ${f.verb}! Desvie do fogo e, quando ele cansar, encoste na bola com a resposta certa. Acerte 6 vezes!` }
+};
+const facIsland = (f, m) => ({ id:`${f.id}-${m}`, name:`${MODES[m].name} da ${f.short}`, icon:MODES[m].icon, genre:MODES[m].genre, game:MODES[m].game,
+  ctrl:MODES[m].ctrl, intro:MODES[m].intro(f), skills:[f.skill], verb:f.verb, fac:f.id });
+
 const ITEMS = {
   outfit: { rosa:{n:'Vestido rosa',dress:'#ff7eb6',trim:'#ffd1e6',head:'crown'}, tunica:{n:'Túnica de aventureira',dress:'#3a9d4a',trim:'#a7e08a',head:'cap',sword:true},
             ninja:{n:'Roupa de ninja',dress:'#2f2b45',trim:'#e0384a',head:'band'}, armadura:{n:'Armadura brilhante',dress:'#aeb9cc',trim:'#f4bd2a',head:'helm',sword:true},
@@ -62,7 +82,7 @@ const persist = () => saveLocal(save);
 /* a newer copy arrived (cloud sync or backup restore): swap it in and refresh what is on screen */
 window.addEventListener('mikinha:replace', e => {
   if (!adopt(e.detail)) return;
-  if (!$('#sMap').hidden) renderMap(); else if (!$('#sTeacher').hidden) renderTeacher(); else if (!$('#sShop').hidden) renderShop();
+  if (!$('#sUni').hidden) renderUni(); else if (!$('#sFac').hidden) goHub(); else if (!$('#sMap').hidden) renderMap(); else if (!$('#sTeacher').hidden) renderTeacher(); else if (!$('#sShop').hidden) renderShop();
 });
 
 /* ================= SOUND + VOICE ================= */
@@ -155,8 +175,31 @@ function gen(skill, step, { maxT = 99, maxP = 9 } = {}) {
 }
 function makeChoices(ans, step) {
   const n = step >= 3 ? 4 : 3, set = new Set([ans]);
-  for (const v of shuffle([ans - 1, ans + 1, ans + 2, ans - 2, ans + 3, ans + 4].filter(v => v >= 0))) { if (set.size >= n) break; set.add(v); }
+  // big answers get the typical slips (forgot the "vai um", swapped a column) instead of ±1
+  const near = ans >= 20 ? [ans + 10, ans - 10, ans + 1, ans - 1, ...(ans >= 200 ? [ans + 100, ans - 100] : [ans + 2])] : [ans - 1, ans + 1, ans + 2, ans - 2, ans + 3, ans + 4];
+  for (const v of shuffle(near.filter(v => v >= 0))) { if (set.size >= n) break; set.add(v); }
   return shuffle([...set]);
+}
+/** One question in the common shape every quiz-style mode (Arena, Caverna, Castelo) understands. */
+function quiz(skill, step) {
+  if (EXTRA_SKILLS[skill]) return EXTRA_SKILLS[skill].quiz(step);
+  const R = gen(skill, step, { maxT:60 }), isRem = skill === 'rem', a = isRem ? R.r : R.k;
+  return { skill, R, left:R.T, op:'÷', right:R.P, a, ask:isRem ? 'rem' : 'value', key:`${R.T}÷${R.P}`,
+    hint:isRem ? `${R.P} × ${R.k} = ${R.P * R.k}. Quanto falta para chegar no ${R.T}? Isso é o que sobra.` : `Pense na tabuada do ${R.P}: ${R.P} vezes quanto dá ${R.T}?`,
+    reveal:isRem ? `${R.T} ÷ ${R.P} = ${R.k} e sobra ${R.r}.` : `${R.P} × ${R.k} = ${R.T}, então ${R.T} ÷ ${R.P} = ${R.k}.`,
+    say:isRem ? `${R.T} dividido por ${R.P}. Quanto sobra?` : `Quanto é ${R.T} dividido por ${R.P}?`,
+    done:isRem ? `${R.T} ÷ ${R.P} = ${R.k} e sobra ${R.r}.` : `${R.T} ÷ ${R.P} = ${R.k}.` };
+}
+/** draws "left op right" centered at x, coloring the division parts like the bracket */
+function drawExpr(c, q, x, y, extra = '', extraColor = '#2a2140') {
+  const div = q.op === '÷';
+  const parts = [[`${q.left}`, div ? '#ef7d16' : '#2a2140'], [` ${q.op} `, div ? '#2a2140' : '#ff6b5b'], [`${q.right}`, div ? '#2f6fdc' : '#2a2140']];
+  if (extra) parts.push([extra, extraColor]);
+  const tw = parts.reduce((s, [t]) => s + c.measureText(t).width, 0); let xx = x - tw / 2;
+  c.textAlign = 'left'; c.textBaseline = 'middle';
+  for (const [t, col] of parts) { c.fillStyle = col; c.fillText(t, xx, y); xx += c.measureText(t).width; }
+  c.textAlign = 'center';
+  return tw;
 }
 
 /* ================= LONG DIVISION (método da chave) ================= */
@@ -441,21 +484,48 @@ function loop(fn) { let last = performance.now(), id; const step = now => { cons
 const blocked = () => !$('#overlay').hidden || !!activeAsk;
 
 /* ================= SCREENS ================= */
-let RUN = null, CUR = null, titleStop = null, shopStop = null;
+let RUN = null, CUR = null, titleStop = null, shopStop = null, HUB = 'uni', LAST = null;
 function show(id) {
-  ['sTitle','sMap','sShop','sRoad','sTeacher','sGame'].forEach(s => $('#' + s).hidden = s !== id);
+  ['sTitle','sUni','sFac','sMap','sShop','sRoad','sTeacher','sGame'].forEach(s => $('#' + s).hidden = s !== id);
   if (shopStop && id !== 'sShop') { shopStop(); shopStop = null; }
   if (titleStop && id !== 'sTitle') { titleStop(); titleStop = null; }
   try { if (id !== 'sGame') speechSynthesis.cancel(); } catch (e) {}
   scrollTo(0, 0);
 }
-function renderMap() {
-  show('sMap');
-  $('#mTro').textContent = `🏆 ${save.trophies}`; $('#mCoin').textContent = `🪙 ${save.coins}`;
+function roadMiniHTML() {
   const nextM = ROAD.find(m => !save.road.includes(m.t)), prevT = [...ROAD].reverse().find(m => save.road.includes(m.t))?.t || 0;
-  $('#roadMini').innerHTML = nextM
+  return nextM
     ? `<div style="flex:1;min-width:200px"><div class="muted">Próximo prêmio da trilha em ${nextM.t} 🏆: ${nextM.coins ? '🪙 ' + nextM.coins : ITEMS[catOf(nextM.item)][nextM.item].n}</div><div class="roadbar"><i style="width:${clamp((save.trophies - prevT) / (nextM.t - prevT) * 100, 0, 100)}%"></i></div></div>`
     : `<div class="muted">Você completou a Trilha de Troféus! 👑</div>`;
+}
+const levelBar = step => `<div class="roadbar" style="width:100%" aria-label="Nível ${step} de 10"><i style="width:${step * 10}%"></i></div>`;
+function goHub() { if (HUB === 'map') renderMap(); else if (HUB.startsWith('fac:')) renderFac(HUB.slice(4)); else renderUni(); }
+function renderUni() {
+  HUB = 'uni'; show('sUni');
+  $('#uTro').textContent = `🏆 ${save.trophies}`; $('#uCoin').textContent = `🪙 ${save.coins}`;
+  $('#uniRoad').innerHTML = roadMiniHTML();
+  $('#facs').innerHTML = FACS.map(f => {
+    const step = f.reino ? Math.round((mstep('share') + mstep('group') + mstep('rem') + mstep('chave')) / 4) : mstep(f.skill);
+    const sub = f.reino ? `Nível médio ${step} de 10 · 7 ilhas` : `Nível ${step} de 10: ${stepRange(f.skill, step)}`;
+    return `<button class="island" data-fac="${f.id}"><span class="ic">${f.icon}</span><span class="nm">${f.name}</span><span class="sk">${f.blurb}</span>${levelBar(step)}<span class="muted">${sub}</span></button>`;
+  }).join('');
+}
+function renderFac(id) {
+  const f = FACS.find(x => x.id === id); if (f.reino) return renderMap();
+  HUB = 'fac:' + id; show('sFac');
+  $('#facName').textContent = `${f.icon} ${f.name}`; $('#fTro').textContent = `🏆 ${save.trophies}`;
+  const step = mstep(f.skill), st = save.stats.skill[f.skill] || { a:0, c:0 };
+  $('#facSkill').innerHTML = `<h3>Nível ${step} de 10</h3><p style="margin:6px 0">${stepRange(f.skill, step)}</p>${levelBar(step)}
+    <p class="muted" style="margin:8px 0 0">${st.a ? `Acertou de primeira ${Math.round(st.c / st.a * 100)}% das ${st.a} contas. ` : ''}O nível sobe e desce sozinho conforme ela acerta e erra.</p>`;
+  $('#facModes').innerHTML = Object.keys(MODES).map(m => {
+    const I = facIsland(f, m), plays = save.plays[I.id] || 0;
+    return `<button class="island" data-fac-mode="${m}" data-fac-id="${f.id}"><span class="ic">${I.icon}</span><span class="nm">${I.name}</span><span class="gn">${I.genre}</span>${plays ? `<span class="muted">Jogou ${plays}×</span>` : ''}</button>`;
+  }).join('');
+}
+function renderMap() {
+  HUB = 'map'; show('sMap');
+  $('#mTro').textContent = `🏆 ${save.trophies}`; $('#mCoin').textContent = `🪙 ${save.coins}`;
+  $('#roadMini').innerHTML = roadMiniHTML();
   const box = $('#islands'); box.innerHTML = '';
   ISLANDS.forEach((I, i) => {
     const open = !I.soon && (i < save.unlocked || save.teacher), plays = save.plays[I.id] || 0;
@@ -505,6 +575,7 @@ const STEP_DESC = {
   chave: ['Arrastar os nomes (dividendo, divisor, quociente, resto)','Completa o quociente, com doces para contar, sem resto','Completa quociente e resto, com doces','Escreve também a subtração, com doces','Sem doces, com a tabuada de apoio','Sem apoio, divisor até 9','Dividendo de 2 algarismos e quociente de 2 algarismos, sem resto, com tabuada','Igual ao 7, com resto','Com "sobra" nas dezenas (ex.: 52 ÷ 4), com tabuada escondida','Igual ao 9, divisores até 6'],
 };
 function stepRange(skill, s) {
+  if (EXTRA_SKILLS[skill]) return EXTRA_SKILLS[skill].desc(s);
   if (skill === 'chave') return STEP_DESC.chave[s - 1];
   if (skill === 'fact') return `Tabuadas de 2 até ${Math.min(9, 2 + s)}`;
   const [P, k] = TAB[s], tot = `${P[0] * k[0]}–${P[1] * k[1] + (skill === 'rem' ? P[1] - 1 : 0)}`;
@@ -532,19 +603,20 @@ function renderTeacher() {
 }
 
 /* ================= GAME RUNNER ================= */
-function enterIsland(i) {
-  const I = ISLANDS[i];
+/** I: an island of the division kingdom or a faculty mode; idx: its position in ISLANDS (-1 for faculty modes) */
+function enterIsland(I, idx = -1) {
+  LAST = { I, idx };
   show('sGame'); bluuIcon(); refreshToggles();
   $('#sGame').classList.remove('canvasMode');
   $('#gName').textContent = `${I.icon} ${I.name}`; $('#gInfo').textContent = ''; $('#stageBox').innerHTML = ''; $('#askBox').hidden = true; $('#touch').innerHTML = '';
   $('#say').textContent = '';
-  overlay(`<div class="big">${I.icon}</div><h2>${I.name}</h2><p>${I.intro}</p><div class="ctrls">${I.ctrl.map(c => `<span>${c}</span>`).join('')}</div><button class="btn gold" data-act="begin" data-i="${i}">Jogar ▶</button>`);
+  overlay(`<div class="big">${I.icon}</div><h2>${I.name}</h2><p>${I.intro}</p><div class="ctrls">${I.ctrl.map(c => `<span>${c}</span>`).join('')}</div><button class="btn gold" data-act="begin">Jogar ▶</button>`);
   if (save.voice) speak(I.intro);
 }
-function beginIsland(i) {
+function beginIsland() {
   closeOverlay();
-  const I = ISLANDS[i];
-  RUN = { island:I, idx:i, first:0, total:0, secret:false, gameOk:0 };
+  const { I, idx } = LAST;
+  RUN = { island:I, idx, first:0, total:0, secret:false, gameOk:0 };
   CUR = GAMES[I.game]();
 }
 function stopGame() { if (CUR) { CUR.stop(); CUR = null; } activeAsk = null; $('#askBox').hidden = true; for (const k in K) K[k] = 0; }
@@ -552,16 +624,16 @@ function finishPhase(extraText = '') {
   const R = RUN, I = R.island; stopGame();
   const tro = 6 + Math.min(8, R.first) + (R.secret ? 3 : 0), coins = 10 + R.first * 2;
   save.plays[I.id] = (save.plays[I.id] || 0) + 1;
-  save.unlocked = Math.max(save.unlocked, R.idx + 2);
+  if (R.idx >= 0) save.unlocked = Math.max(save.unlocked, R.idx + 2);
   save.coins += coins; addTrophies(tro); persist();
   sfx.level(); confetti(90);
-  const nextI = ISLANDS[R.idx + 1], newly = nextI && !nextI.soon && save.plays[I.id] === 1;
+  const nextI = R.idx >= 0 ? ISLANDS[R.idx + 1] : null, newly = nextI && !nextI.soon && save.plays[I.id] === 1;
   overlay(`<canvas id="emoteCv" width="260" height="170" style="width:260px;max-width:100%;height:auto" aria-hidden="true"></canvas>
     <h2>Fase completa!</h2><p>${extraText}</p>
     <div class="row" style="justify-content:center"><span class="pill">🏆 +${tro}</span><span class="pill">🪙 +${coins}</span>${R.secret ? '<span class="pill">🧰 Baú secreto!</span>' : ''}</div>
     <p class="muted">Acertou de primeira ${R.first} de ${R.total}.</p>
     ${newly ? `<p>Nova ilha aberta: <b>${nextI.icon} ${nextI.name}</b></p>` : ''}
-    <div class="row" style="justify-content:center"><button class="btn gold" data-act="again" data-i="${R.idx}">Jogar de novo</button><button class="btn alt" data-act="map">Mapa 🗺️</button></div>`);
+    <div class="row" style="justify-content:center"><button class="btn gold" data-act="again">Jogar de novo</button><button class="btn alt" data-act="map">Voltar</button></div>`);
   ovStop = heroScene($('#emoteCv'), { emote:save.equip.emote });
   RUN = null;
 }
@@ -708,9 +780,15 @@ GAMES.praia = function () {
 /* ================= CAVERNA: platformer obby, remainders ================= */
 GAMES.caverna = function () {
   const W = 960, H = 540, GY = 450, { cv, c } = makeCanvas(W, H); setTouch('side');
-  const g = gstep();
+  const g = gstep(), SK = RUN.island.skills || ['rem'];
   const solids = [], spikes = [], blocks = [], gates = [], cps = [], movers = [];
   let x = 0, chest = null, alive = true;
+  // remainders alternate "quanto sobra?" and "quanto cada um ganha?"; other skills ask the result
+  function gateQ(skill, gi) {
+    const Q = quiz(skill, mstep(skill));
+    if (skill === 'rem' && gi % 2) { const R = Q.R; Object.assign(Q, { a:R.k, ask:'quo', say:`${R.T} dividido por ${R.P}. Quanto cada um ganha?`, hint:`Quantos grupos completos de ${R.P} cabem no ${R.T}? ${R.P} × ${R.k} = ${R.P * R.k}.` }); }
+    return Q;
+  }
   const seg = (sx, w, y = GY) => solids.push({ x:sx, y, w, h:H - y + 60, kind:'rock' });
   seg(0, 520); cps.push(80); x = 520;
   for (let gi = 0; gi < 4; gi++) {
@@ -722,13 +800,14 @@ GAMES.caverna = function () {
       else { const gw = 270 + g * 8; const m = { x:x + 40, y:GY - 6, w:110, h:18, x0:x + 40, amp:(gw - 160) / 2, ph:Math.random() * 6, sp:1.1 + g * .08, kind:'mover', dx:0 }; movers.push(m); solids.push(m); x += gw; seg(x, 240); cps.push(x + 40); x += 240; }
     }
     if (gi === 1 && secretAvailable()) { solids.push({ x:x - 200, y:GY - 110, w:80, h:16, kind:'plat' }); solids.push({ x:x - 110, y:GY - 220, w:100, h:16, kind:'plat' }); chest = { x:x - 60, y:GY - 245 }; }
-    let R = gen('rem', mstep('rem'));
-    for (let k = 0; k < 8 && gates.some(q => q.R.T === R.T && q.R.P === R.P); k++) R = gen('rem', mstep('rem'));
-    const type = gi % 2 ? 'q' : 'r', ans = type === 'r' ? R.r : R.k;
+    const skill = SK[gi % SK.length];
+    let Q = gateQ(skill, gi);
+    for (let k = 0; k < 8 && gates.some(q => q.Q.key === Q.key); k++) Q = gateQ(skill, gi);
     seg(x, 820); cps.push(x + 40);
-    const opts = makeChoices(ans, mstep('rem'));
-    const gate = { x:x + 760, wall:{ x:x + 760, y:GY - 220, w:34, h:220, kind:'gate' }, sign:x + 90, R, type, ans, open:false, tries:0, t0:0, seen:false, blocks:[] };
-    opts.forEach((v, j) => { const b = { x:x + 300 + j * 110, y:GY - 158, w:62, h:56, kind:'block', val:v, dead:false, ok:false, gate, bump:0 }; blocks.push(b); solids.push(b); gate.blocks.push(b); });
+    const opts = makeChoices(Q.a, mstep(skill)), bw = Math.max(62, String(Math.max(...opts)).length * 22 + 18);
+    const gate = { x:x + 760, wall:{ x:x + 760, y:GY - 220, w:34, h:220, kind:'gate' }, sign:x + 90, Q, R:Q.R, ans:Q.a, open:false, tries:0, t0:0, seen:false, blocks:[] };
+    const gap = Math.min(bw + 48, (450 - bw) / Math.max(1, opts.length - 1));
+    opts.forEach((v, j) => { const b = { x:x + 290 + j * gap, y:GY - 158, w:bw, h:56, kind:'block', val:v, dead:false, ok:false, gate, bump:0 }; blocks.push(b); solids.push(b); gate.blocks.push(b); });
     solids.push(gate.wall); gates.push(gate); x += 820;
   }
   seg(x, 520); const flagX = x + 300, LW = x + 520;
@@ -742,18 +821,18 @@ GAMES.caverna = function () {
   function hitBlock(b) {
     const G = b.gate; if (G.open || b.dead || b.ok) return; b.bump = .15;
     if (b.val === G.ans) {
-      b.ok = true; G.open = true; if (G.tries === 0) record('rem', true, { fast:performance.now() - G.t0 < 8000, key:`${G.R.T}÷${G.R.P}` });
-      sfx.yay(); burst(parts, b.x + 31, b.y, '#239a4c', 18);
+      b.ok = true; G.open = true; if (G.tries === 0) record(G.Q.skill, true, { fast:performance.now() - G.t0 < 8000, key:G.Q.key });
+      sfx.yay(); burst(parts, b.x + b.w / 2, b.y, '#239a4c', 18);
       const done = gates.filter(q => q.open).length; $('#gInfo').textContent = `Portões: ${done} de 4`;
-      say(`Isso! ${G.R.T} ÷ ${G.R.P} = ${G.R.k} e sobra ${G.R.r}. O portão abriu!`);
-      showMini(G.R);
+      say(`Isso! ${G.Q.done} O portão abriu!`);
+      if (G.R) showMini(G.R);
     } else {
-      if (G.tries === 0) record('rem', false, { key:`${G.R.T}÷${G.R.P}` });
+      if (G.tries === 0) record(G.Q.skill, false, { key:G.Q.key });
       G.tries++; b.dead = true; sfx.hmm(); burst(parts, b.x + 31, b.y + 28, '#7a6a99', 14);
       say(G.tries >= 2 ? `A resposta é ${G.ans}! O bloco certo está brilhando.` : hintFor(G));
     }
   }
-  function hintFor(G) { const { T, P, k, r } = G.R; return G.type === 'r' ? `Quase! Faça grupos de ${P} com os ${T} pontinhos da placa. O que não forma grupo é o que sobra.` : `Quase! Quantos grupos completos de ${P} cabem no ${T}? ${P} × ${k} = ${P * k}.`; }
+  function hintFor(G) { return G.Q.ask === 'rem' ? `Quase! Faça grupos de ${G.R.P} com os ${G.R.T} pontinhos da placa. O que não forma grupo é o que sobra.` : `Quase! ${G.Q.hint}`; }
   function showMini(R) {
     if (mini) mini.remove();
     mini = document.createElement('div'); mini.className = 'miniChave';
@@ -783,7 +862,7 @@ GAMES.caverna = function () {
       curGate = gates.find(G => !G.open && p.x > G.sign - 40 && p.x < G.x + 40) || null;
       if (curGate && !curGate.seen) { curGate.seen = true; curGate.t0 = performance.now(); say(qText(curGate)); }
       if (chest && Math.hypot(p.x + 14 - chest.x, p.y + 20 - chest.y) < 40) { chest = null; openChest(); }
-      if (p.x > flagX) { alive = false; stopLoop(); finishPhase('Você atravessou a Caverna das Sobras! 🕯️'); return; }
+      if (p.x > flagX) { alive = false; stopLoop(); finishPhase(`Você atravessou a ${RUN.island.name}! 🕯️`); return; }
       if (p.vx && p.on) trailEmit(parts, p.x + 14, p.y + p.h, save.equip.trail, t);
     }
     cam += (clamp(p.x - 320, 0, LW - W) - cam) * Math.min(1, dt * 8);
@@ -803,7 +882,7 @@ GAMES.caverna = function () {
         const glow = G.tries >= 2 && s.val === G.ans && !G.open;
         c.fillStyle = s.ok ? '#239a4c' : glow ? '#ffe27a' : '#f4bd2a'; rrect(c, s.x, by, s.w, s.h, 8); c.fill();
         c.strokeStyle = '#c8920f'; c.lineWidth = 3; c.stroke();
-        c.fillStyle = s.ok ? '#fff' : '#2a2140'; c.font = "34px 'Lilita One',sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(s.val, s.x + s.w / 2, by + s.h / 2 + 2);
+        c.fillStyle = s.ok ? '#fff' : '#2a2140'; c.font = `${String(s.val).length > 2 ? 28 : 34}px 'Lilita One',sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(s.val, s.x + s.w / 2, by + s.h / 2 + 2);
       }
     }
     for (const s of spikes) { c.fillStyle = '#d6dde8'; for (let sx = s.x; sx < s.x + s.w; sx += 12) { c.beginPath(); c.moveTo(sx, s.y + s.h); c.lineTo(sx + 6, s.y); c.lineTo(sx + 12, s.y + s.h); c.fill(); } }
@@ -815,25 +894,25 @@ GAMES.caverna = function () {
     partsDraw(c, parts, 1 / 60);
     c.restore();
     if (curGate) {
-      const { T, P } = curGate.R, txt = curGate.type === 'r' ? 'quanto SOBRA?' : 'quanto cada um ganha?';
-      c.fillStyle = 'rgba(253,240,200,.95)'; rrect(c, W / 2 - 250, 12, 500, 56, 14); c.fill();
-      c.font = "30px 'Lilita One',sans-serif"; c.textBaseline = 'middle'; c.textAlign = 'left';
-      const parts2 = [[`${T}`, '#ef7d16'], [' ÷ ', '#2a2140'], [`${P}`, '#2f6fdc'], ['  →  ' + txt, curGate.type === 'r' ? '#e0384a' : '#239a4c']];
-      let tw = parts2.reduce((a, [s]) => a + c.measureText(s).width, 0), xx = W / 2 - tw / 2;
-      for (const [s, col] of parts2) { c.fillStyle = col; c.fillText(s, xx, 41); xx += c.measureText(s).width; }
+      const Q = curGate.Q, txt = Q.ask === 'rem' ? '  →  quanto SOBRA?' : Q.ask === 'quo' ? '  →  quanto cada um ganha?' : ' = ?';
+      c.fillStyle = 'rgba(253,240,200,.95)'; rrect(c, W / 2 - 260, 12, 520, 56, 14); c.fill();
+      c.font = "30px 'Lilita One',sans-serif";
+      drawExpr(c, Q, W / 2, 41, txt, Q.ask === 'rem' ? '#e0384a' : '#239a4c');
     }
   });
-  function qText(G) { const { T, P } = G.R; return G.type === 'r' ? `${T} dividido por ${P}. Quanto sobra? Pule embaixo do bloco certo!` : `${T} dividido por ${P}. Quanto cada um ganha? Pule embaixo do bloco certo!`; }
+  function qText(G) { return `${G.Q.say} Pule embaixo do bloco certo!`; }
   function drawSign(G, t) {
-    const { T, P } = G.R, sx = G.sign, sy = GY - 210, w = 170, rows = Math.ceil(T / P), showDots = mstep('rem') <= 5;
+    const sx = G.sign, sy = GY - 210, w = 170, showDots = !!G.R && mstep(G.Q.skill) <= 5;
     c.fillStyle = '#7a4b23'; c.fillRect(sx + 20, sy + 120, 8, 90); c.fillRect(sx + w - 28, sy + 120, 8, 90);
     c.fillStyle = '#fdf0c8'; rrect(c, sx, sy, w, 130, 12); c.fill(); c.strokeStyle = '#cf8d3c'; c.lineWidth = 4; c.stroke();
-    c.font = "28px 'Lilita One',sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillStyle = '#ef7d16'; c.fillText(T, sx + w / 2 - 34, sy + 24); c.fillStyle = '#2a2140'; c.fillText('÷', sx + w / 2, sy + 24); c.fillStyle = '#2f6fdc'; c.fillText(P, sx + w / 2 + 34, sy + 24);
+    c.font = `${String(G.Q.left).length + String(G.Q.right).length > 5 ? 22 : 28}px 'Lilita One',sans-serif`;
+    drawExpr(c, G.Q, sx + w / 2, sy + 24);
+    if (!G.R) { c.font = "40px 'Lilita One',sans-serif"; c.fillStyle = '#5d5070'; c.textBaseline = 'middle'; c.fillText('= ?', sx + w / 2, sy + 80); return; }
+    const { T, P } = G.R, rows = Math.ceil(T / P);
     if (showDots) {
       const ds = Math.min(12, 90 / rows);
       for (let i = 0; i < T; i++) { const rr = Math.floor(i / P), cc = i % P, left = rr === rows - 1 && T % P !== 0; c.fillStyle = left ? '#e0384a' : '#ef7d16'; c.beginPath(); c.arc(sx + w / 2 - (P - 1) * 8 + cc * 16, sy + 50 + rr * ds, Math.min(5, ds / 2.4), 0, 7); c.fill(); }
-    } else { c.font = "18px 'Nunito',sans-serif"; c.fillStyle = '#5d5070'; c.fillText(G.type === 'r' ? 'Quanto sobra?' : 'Quanto cada um?', sx + w / 2, sy + 80); }
+    } else { c.font = "18px 'Nunito',sans-serif"; c.fillStyle = '#5d5070'; c.fillText(G.Q.ask === 'rem' ? 'Quanto sobra?' : 'Quanto cada um?', sx + w / 2, sy + 80); }
   }
   if (DEBUG) window.__g = { p, gates, blocks, solids, get cp() { return cp; }, flagX };
   return { stop() { alive = false; stopLoop(); }, hint() { if (curGate) say(hintFor(curGate)); else say('Use as setas para correr e o Espaço para pular. Pule embaixo dos blocos para bater neles!'); } };
@@ -926,15 +1005,17 @@ GAMES.arena = function () {
   let robots = [], shots = [], orbs = [], drops = [], parts = [], gems = 0, time = 120, target = null, alive = true, state = 'play', calm = 0;
   const inCover = (x, y, r = 14) => COVERS.some(o => x > o.x - r && x < o.x + o.w + r && y > o.y - r && y < o.y + o.h + r);
   const bad = (x, y) => x < 24 || x > W - 24 || y < 76 || y > H - 16 || inCover(x, y);
+  const SK = RUN.island.skills || ['share','share','group','rem','fact'];
+  const isDivArena = SK.every(s => !EXTRA_SKILLS[s]);
   function newTarget() {
-    const skill = pick(['share','share','group','rem','fact']), st = mstep(skill), R = gen(skill, st, { maxT:60 }), val = skill === 'rem' ? R.r : R.k;
-    const list = [{ T:R.T, P:R.P, val, ok:true }], labels = new Set([`${R.T}÷${R.P}`]);
+    const skill = pick(SK), st = mstep(skill), Q = quiz(skill, st), val = Q.a;
+    const list = [{ q:Q, val, ok:true }], labels = new Set([Q.key]);
     const nd = st <= 3 ? 2 : 3;
-    for (let i = 0; i < 80 && list.length < nd + 1; i++) { const D = gen(skill, st, { maxT:60 }), v = skill === 'rem' ? D.r : D.k, lb = `${D.T}÷${D.P}`; if (v !== val && !labels.has(lb)) { labels.add(lb); list.push({ T:D.T, P:D.P, val:v, ok:false }); } }
+    for (let i = 0; i < 80 && list.length < nd + 1; i++) { const D = quiz(skill, st); if (D.a !== val && !labels.has(D.key)) { labels.add(D.key); list.push({ q:D, val:D.a, ok:false }); } }
     const cols = ['#e0384a','#6a3fc1','#2f6fdc','#239a4c'];
-    robots = shuffle(list).map((L, i) => { let x, y, k = 0; do { x = rand(80, 880); y = rand(100, 330); } while ((bad(x, y) || Math.hypot(x - p.x, y - p.y) < 160) && k++ < 60); const a = Math.random() * 7; return { ...L, x, y, vx:Math.cos(a) * (28 + g * 5), vy:Math.sin(a) * (28 + g * 5), col:cols[i % 4], shootT:rand(2, 5), reveal:0, gone:false }; });
-    target = { skill, val, tries:0, t0:performance.now(), R };
-    say(skill === 'rem' ? `Acerte o robô cuja conta SOBRA ${val}!` : `Acerte o robô cuja conta dá ${val}!`);
+    robots = shuffle(list).map((L, i) => { let x, y, k = 0; do { x = rand(110, 850); y = rand(100, 330); } while ((bad(x, y) || Math.hypot(x - p.x, y - p.y) < 160) && k++ < 60); const a = Math.random() * 7; return { ...L, x, y, vx:Math.cos(a) * (28 + g * 5), vy:Math.sin(a) * (28 + g * 5), col:cols[i % 4], shootT:rand(2, 5), reveal:0, gone:false }; });
+    target = { skill, val, tries:0, t0:performance.now(), Q, rem:Q.ask === 'rem' };
+    say(target.rem ? `Acerte o robô cuja conta SOBRA ${val}!` : `Acerte o robô cuja conta dá ${val}!`);
   }
   function shoot(tx, ty) {
     if (p.cd > 0) return; p.cd = .35;
@@ -942,18 +1023,18 @@ GAMES.arena = function () {
   }
   function nearest() { let b = null, bd = 1e9; for (const r of robots) if (!r.gone && !r.reveal) { const d = Math.hypot(r.x - p.x, r.y - p.y); if (d < bd) { bd = d; b = r; } } return b; }
   function hitRobot(r) {
-    const key = `${r.T}÷${r.P}`;
+    const key = r.q.key;
     if (r.ok) {
       if (target.tries === 0) record(target.skill, true, { fast:performance.now() - target.t0 < 8000, key });
       sfx.yay(); burst(parts, r.x, r.y, '#ef7d16', 20);
       for (let i = 0; i < 3; i++) drops.push({ x:clamp(r.x + rand(-40, 40), 40, 920), y:clamp(r.y + rand(-30, 40), 90, 520), t:0 });
       robots.forEach(o => o.gone = true);
-      say(`Isso! ${r.T} ÷ ${r.P} ${target.skill === 'rem' ? `sobra ${r.val}` : `= ${r.val}`}! Pegue as gemas!`);
+      say(`Isso! ${r.q.done} Pegue as gemas!`);
       setTimeout(() => { if (alive && state === 'play') newTarget(); }, 1300);
     } else {
-      if (target.tries === 0) record(target.skill, false, { key });
+      if (target.tries === 0) record(target.skill, false, { key:target.Q.key });
       target.tries++; r.reveal = 2.2; sfx.hmm();
-      say(target.skill === 'rem' ? `Esse robô sobra ${r.val}, não ${target.val}. Procure outro!` : `Esse robô dá ${r.val}, não ${target.val}. Procure outro!`);
+      say(target.rem ? `Esse robô sobra ${r.val}, não ${target.val}. Procure outro!` : `Esse robô dá ${r.val}, não ${target.val}. Procure outro!`);
     }
   }
   cv.addEventListener('pointerdown', e => {
@@ -964,7 +1045,7 @@ GAMES.arena = function () {
   });
   async function end() {
     state = 'end'; stopLoop();
-    if (gems >= 3) {
+    if (gems >= 3 && isDivArena) {
       const k = Math.floor(gems / 3), r = gems % 3, skill = r ? 'rem' : 'share';
       say(`Fim da partida! Você pegou ${gems} gemas. Agora divida com o seu time de 3 brawlers!`);
       await ask({ q:`${gems} gemas para 3 amigos do time. Quantas cada um ganha?`, a:k, skill, key:`${gems}÷3`, hint:`Faça rodadas de 3: uma gema para cada amigo, até não dar mais.`, reveal:`3 × ${k} = ${k * 3}. Cada um ganha ${k}!` });
@@ -1027,12 +1108,12 @@ GAMES.arena = function () {
       c.fillStyle = '#fff'; c.fillRect(r.x - 13, r.y - 10, 9, 9); c.fillRect(r.x + 4, r.y - 10, 9, 9);
       c.fillStyle = '#1b1730'; c.fillRect(r.x - 10, r.y - 7, 4, 4); c.fillRect(r.x + 7, r.y - 7, 4, 4);
       c.strokeStyle = '#1b1730'; c.lineWidth = 2; c.beginPath(); c.moveTo(r.x, r.y - 22); c.lineTo(r.x, r.y - 32); c.stroke();
-      const lbl = r.reveal ? (target && target.skill === 'rem' ? `sobra ${r.val}` : `= ${r.val}`) : `${r.T} ÷ ${r.P}`;
+      const lbl = r.reveal ? (target && target.rem ? `sobra ${r.val}` : `= ${r.val}`) : `${r.q.left} ${r.q.op} ${r.q.right}`;
       c.font = "24px 'Lilita One',sans-serif"; const tw = c.measureText(lbl).width + 20;
       c.fillStyle = '#fff'; rrect(c, r.x - tw / 2, r.y - 72, tw, 34, 10); c.fill();
       c.textAlign = 'center'; c.textBaseline = 'middle';
       if (r.reveal) { c.fillStyle = '#5d5070'; c.fillText(lbl, r.x, r.y - 54); }
-      else { const a = `${r.T}`, b = ' ÷ ', d2 = `${r.P}`, wa = c.measureText(a).width, wb = c.measureText(b).width, wd = c.measureText(d2).width; let xx = r.x - (wa + wb + wd) / 2; c.textAlign = 'left'; c.fillStyle = '#ef7d16'; c.fillText(a, xx, r.y - 54); xx += wa; c.fillStyle = '#2a2140'; c.fillText(b, xx, r.y - 54); xx += wb; c.fillStyle = '#2f6fdc'; c.fillText(d2, xx, r.y - 54); }
+      else drawExpr(c, r.q, r.x, r.y - 54);
     }
     for (const s of shots) { c.fillStyle = '#f4bd2a'; c.beginPath(); c.arc(s.x, s.y, 7, 0, 7); c.fill(); }
     for (const o of orbs) { c.fillStyle = '#9b5de5'; c.beginPath(); c.arc(o.x, o.y, 9, 0, 7); c.fill(); c.fillStyle = '#d7b8ff'; c.beginPath(); c.arc(o.x - 2, o.y - 2, 3, 0, 7); c.fill(); }
@@ -1040,17 +1121,17 @@ GAMES.arena = function () {
     if (p.invT <= 0 || Math.floor(t * 10) % 2) drawHero(c, p.x, p.y, 1.1, save.equip, t, p.moving, p.face);
     partsDraw(c, parts, 1 / 60);
     if (target) {
-      const txt = target.skill === 'rem' ? `Acerte a conta que SOBRA ${target.val}` : `Acerte a conta que dá ${target.val}`;
+      const txt = target.rem ? `Acerte a conta que SOBRA ${target.val}` : `Acerte a conta que dá ${target.val}`;
       c.font = "28px 'Lilita One',sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillStyle = 'rgba(253,240,200,.95)'; rrect(c, W / 2 - 230, 10, 460, 46, 14); c.fill();
-      c.fillStyle = target.skill === 'rem' ? '#e0384a' : '#239a4c'; c.fillText(txt, W / 2, 34);
+      c.fillStyle = target.rem ? '#e0384a' : '#239a4c'; c.fillText(txt, W / 2, 34);
     }
     c.fillStyle = 'rgba(255,255,255,.92)'; rrect(c, 12, 10, 150, 46, 12); c.fill();
     c.fillStyle = '#ef7d16'; c.font = "26px 'Lilita One',sans-serif"; c.textAlign = 'left'; c.fillText(`💎 ${gems}/${GOAL}`, 24, 34);
   });
   newTarget();
   if (DEBUG) window.__g = { p, get robots() { return robots; }, get gems() { return gems; }, set gems(v) { gems = v; }, get drops() { return drops; }, get target() { return target; }, set time(v) { time = v; } };
-  return { stop() { alive = false; stopLoop(); }, hint() { if (!target) return; const R = target.R; say(target.skill === 'rem' ? `Para achar o que sobra: faça grupos com o dividendo e veja o que não forma grupo. Por exemplo, ${R.T} ÷ ${R.P}: ${R.P} × ${R.k} = ${R.P * R.k}, e sobra ${R.r}.` : `Use a tabuada! ${R.P} × ${R.k} = ${R.T}, então ${R.T} ÷ ${R.P} = ${R.k}.`); } };
+  return { stop() { alive = false; stopLoop(); }, hint() { if (!target) return; say(`Faça a conta de cada robô. Dica para a conta certa: ${target.Q.hint}`); } };
 };
 
 /* ================= VILA: snack-bar tycoon, sharing + packing ================= */
@@ -1327,7 +1408,8 @@ GAMES.castelo = function () {
     say(pick(['Cuidado com o fogo! Desvie!', 'O dragão vai atacar! Fique esperta!', 'Desvie das bolas de fogo!']));
   }
   function makeQ() {
-    const skill = pick(['share','group','rem','fact','chave','chave']), st = mstep(skill);
+    const skill = pick(RUN.island.skills || ['share','group','rem','fact','chave','chave']), st = mstep(skill);
+    if (EXTRA_SKILLS[skill]) { const Q = quiz(skill, st); return { skill, a:Q.a, key:Q.key, text:`${Q.left} ${Q.op} ${Q.right} = ?`, hint:Q.hint, opts:makeChoices(Q.a, st) }; }
     if (skill === 'chave') {
       const m = genChave(clamp(st, 2, 9)), askRes = m.L.r > 0 && Math.random() < .5, a = askRes ? m.L.r : m.L.q;
       return { skill, a, m, askRes, key:`${m.N}÷${m.d}`, text:`Na chave ${m.N} ÷ ${m.d}: qual é o ${askRes ? 'RESTO' : 'QUOCIENTE'}?`,
@@ -1394,7 +1476,7 @@ GAMES.castelo = function () {
         const vx = DX - shot.x, vy = DY - shot.y, d = Math.hypot(vx, vy);
         if (d < 30) {
           shot = null; hp--; flash = .5; sfx.hit(); burst(parts, DX, DY, '#f4bd2a', 26);
-          if (hp <= 0) { won = true; state = 'win'; sfx.level(); confetti(140); say('Você conseguiu! O Dragão Guloso aprendeu a dividir e virou seu amigo! 💚'); setTimeout(() => { if (!alive) return; grant('dragona', 'Prêmio do Dragão'); finishPhase('O Dragão Guloso aprendeu a dividir! O reino está salvo! 👑'); }, 2800); }
+          if (hp <= 0) { won = true; state = 'win'; sfx.level(); confetti(140); const verb = RUN.island.verb || 'dividir'; say(`Você conseguiu! O Dragão Guloso aprendeu a ${verb} e virou seu amigo! 💚`); setTimeout(() => { if (!alive) return; grant('dragona', 'Prêmio do Dragão'); finishPhase(`O Dragão Guloso aprendeu a ${verb}! 👑`); }, 2800); }
           else { say(hp === 4 || hp === 2 ? 'Acertou! O dragão ficou bravo... ele vai atacar mais forte!' : 'Acertou em cheio! 🎯'); setTimeout(() => { if (alive && !won) startAttack(); }, 1200); state = 'pause'; }
         } else { shot.x += vx / d * 700 * dt; shot.y += vy / d * 700 * dt; }
       }
@@ -1422,7 +1504,7 @@ GAMES.castelo = function () {
         const glow = Q.tries >= 2 && o.v === Q.a, yy = o.y + Math.sin(t * 3 + o.x) * 5;
         if (glow) { c.fillStyle = 'rgba(244,189,42,.45)'; c.beginPath(); c.arc(o.x, yy, 44, 0, 7); c.fill(); }
         c.fillStyle = '#fdf0c8'; c.beginPath(); c.arc(o.x, yy, 32, 0, 7); c.fill(); c.strokeStyle = '#cf8d3c'; c.lineWidth = 4; c.stroke();
-        c.fillStyle = '#2a2140'; c.font = "32px 'Lilita One',sans-serif"; c.fillText(o.v, o.x, yy + 2);
+        c.fillStyle = '#2a2140'; c.font = `${String(o.v).length > 3 ? 20 : String(o.v).length > 2 ? 25 : 32}px 'Lilita One',sans-serif`; c.fillText(o.v, o.x, yy + 2);
       }
     }
     drawBluu(c, bl.x, bl.y, 1, save.equip.hat, t);
@@ -1438,17 +1520,20 @@ GAMES.castelo = function () {
 let wipeArmed = false;
 document.addEventListener('click', ev => {
   const t = ev.target;
-  const isl = t.closest('[data-island]'); if (isl) return enterIsland(+isl.dataset.island);
+  const isl = t.closest('[data-island]'); if (isl) return enterIsland(ISLANDS[+isl.dataset.island], +isl.dataset.island);
+  const fm = t.closest('[data-fac-mode]'); if (fm) return enterIsland(facIsland(FACS.find(f => f.id === fm.dataset.facId), fm.dataset.facMode));
+  const fac = t.closest('[data-fac]'); if (fac) return renderFac(fac.dataset.fac);
   const cat = t.closest('[data-cat]'); if (cat) return renderShop(cat.dataset.cat);
   const buy = t.closest('[data-buy]');
   if (buy) { const id = buy.dataset.buy; if (save.coins >= SHOP[id]) { save.coins -= SHOP[id]; save.owned.push(id); save.equip[catOf(id)] = id; persist(); sfx.yay(); confetti(30); toast(`Comprou: ${ITEMS[catOf(id)][id].n}!`); renderShop(catOf(id)); } return; }
   const eq = t.closest('[data-equip]'); if (eq) { const id = eq.dataset.equip; save.equip[catOf(id)] = id; persist(); sfx.pop(); return renderShop(catOf(id)); }
   const a = t.closest('[data-act]'); if (!a) return;
   const act = a.dataset.act;
-  if (act === 'map') { closeOverlay(); stopGame(); RUN = null; return renderMap(); }
-  if (act === 'leave') { stopGame(); RUN = null; return renderMap(); }
-  if (act === 'begin') return beginIsland(+a.dataset.i);
-  if (act === 'again') { closeOverlay(); return enterIsland(+a.dataset.i); }
+  if (act === 'map') { closeOverlay(); stopGame(); RUN = null; return goHub(); }
+  if (act === 'leave') { stopGame(); RUN = null; return goHub(); }
+  if (act === 'uni') { closeOverlay(); stopGame(); RUN = null; return renderUni(); }
+  if (act === 'begin') return beginIsland();
+  if (act === 'again') { closeOverlay(); return enterIsland(LAST.I, LAST.idx); }
   if (act === 'shop') return renderShop();
   if (act === 'road') return renderRoad();
   if (act === 'teacher') return renderTeacher();

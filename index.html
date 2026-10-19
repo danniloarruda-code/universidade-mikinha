@@ -18,21 +18,45 @@
   <!-- TITLE -->
   <section class="panel title" id="sTitle">
     <canvas class="heroCv" id="titleCv" width="220" height="150" aria-hidden="true"></canvas>
-    <div class="logo">Mikinha<small>e o Reino das Ilhas</small></div>
-    <p>O Dragão Guloso pegou tudo do reino e não divide com ninguém! A Princesa Mikinha e o Bluu vão viajar pelas ilhas para devolver tudo de um jeito justo.</p>
-    <button class="btn gold" data-act="map" id="playBtn">Jogar ▶</button>
+    <div class="logo">Universidade<small>da Mikinha</small></div>
+    <p>A Princesa Mikinha e o Bluu estudam na universidade mais divertida do reino. Cada faculdade ensina uma operação, com aventuras, batalhas e o Dragão Guloso esperando no castelo!</p>
+    <button class="btn gold" data-act="uni" id="playBtn">Jogar ▶</button>
   </section>
 
-  <!-- MAP -->
-  <section id="sMap" hidden>
+  <!-- UNIVERSITY -->
+  <section id="sUni" hidden>
     <div class="stage">
       <div class="panel bar">
-        <h2>🗺️ Mapa do Reino</h2>
+        <h2>🏛️ Universidade da Mikinha</h2>
         <div class="row">
-          <span class="pill" id="mTro">🏆 0</span><span class="pill" id="mCoin">🪙 0</span>
+          <span class="pill" id="uTro">🏆 0</span><span class="pill" id="uCoin">🪙 0</span>
           <button class="btn alt small" data-act="shop">🛍️ Loja</button>
           <button class="btn alt small" data-act="road">🏆 Trilha</button>
           <button class="btn alt small" data-act="teacher">🔑 Professor</button>
+        </div>
+      </div>
+      <div class="panel bar" id="uniRoad"></div>
+      <div class="islands" id="facs"></div>
+    </div>
+  </section>
+
+  <!-- FACULTY -->
+  <section id="sFac" hidden>
+    <div class="stage">
+      <div class="panel bar"><div class="row"><button class="btn alt small" data-act="uni">⬅ Universidade</button><h2 id="facName"></h2></div><span class="pill" id="fTro">🏆 0</span></div>
+      <div class="panel" id="facSkill"></div>
+      <div class="islands" id="facModes"></div>
+    </div>
+  </section>
+
+  <!-- MAP (Faculdade da Divisão) -->
+  <section id="sMap" hidden>
+    <div class="stage">
+      <div class="panel bar">
+        <div class="row"><button class="btn alt small" data-act="uni">⬅ Universidade</button><h2>➗ Reino das Ilhas</h2></div>
+        <div class="row">
+          <span class="pill" id="mTro">🏆 0</span><span class="pill" id="mCoin">🪙 0</span>
+          <button class="btn alt small" data-act="shop">🛍️ Loja</button>
         </div>
       </div>
       <div class="panel bar" id="roadMini"></div>
@@ -43,7 +67,7 @@
   <!-- SHOP -->
   <section id="sShop" hidden>
     <div class="stage">
-      <div class="panel bar"><div class="row"><button class="btn alt small" data-act="map">⬅ Mapa</button><h2>🛍️ Loja</h2></div><span class="pill" id="sCoin">🪙 0</span></div>
+      <div class="panel bar"><div class="row"><button class="btn alt small" data-act="map">⬅ Voltar</button><h2>🛍️ Loja</h2></div><span class="pill" id="sCoin">🪙 0</span></div>
       <div class="shopwrap">
         <div class="panel preview"><canvas id="shopCv" width="240" height="220" style="width:100%;max-width:240px;height:auto" aria-hidden="true"></canvas><div class="muted">Assim a Mikinha está agora</div><button class="btn alt small" data-act="emote">Ver dancinha</button></div>
         <div class="panel"><div class="cats" id="cats"></div><div class="items" id="shopItems"></div></div>
@@ -54,7 +78,7 @@
   <!-- ROAD -->
   <section id="sRoad" hidden>
     <div class="stage">
-      <div class="panel bar"><div class="row"><button class="btn alt small" data-act="map">⬅ Mapa</button><h2>🏆 Trilha de Troféus</h2></div><span class="pill" id="rTro">🏆 0</span></div>
+      <div class="panel bar"><div class="row"><button class="btn alt small" data-act="map">⬅ Voltar</button><h2>🏆 Trilha de Troféus</h2></div><span class="pill" id="rTro">🏆 0</span></div>
       <div class="panel road" id="roadList"></div>
     </div>
   </section>
@@ -62,7 +86,7 @@
   <!-- TEACHER -->
   <section id="sTeacher" hidden>
     <div class="stage">
-      <div class="panel bar"><div class="row"><button class="btn alt small" data-act="map">⬅ Mapa</button><h2>🔑 Modo professor</h2></div></div>
+      <div class="panel bar"><div class="row"><button class="btn alt small" data-act="map">⬅ Voltar</button><h2>🔑 Modo professor</h2></div></div>
       <div class="tgrid">
         <div class="panel"><h3>Relatório por habilidade</h3><div id="repSkills" class="stat" style="margin-top:10px"></div></div>
         <div class="panel"><h3>Últimos 7 dias</h3><div class="muted">Barra azul: respostas. Verde: acertos de primeira.</div><div class="bars" id="repDays"></div><div class="muted" id="repTime" style="margin-top:8px"></div></div>
@@ -98,7 +122,7 @@
   <section id="sGame" hidden>
     <div class="stage">
       <div class="panel gbar">
-        <div class="row"><button class="btn alt small" data-act="leave">⬅ Mapa</button><h2 id="gName"></h2></div>
+        <div class="row"><button class="btn alt small" data-act="leave">⬅ Voltar</button><h2 id="gName"></h2></div>
         <div class="row"><span class="pill" id="gInfo"></span><button class="btn alt small" data-act="hint">💡 Dica</button><button class="btn alt small" data-act="sound" id="tSound">🎵</button><button class="btn alt small" data-act="voice" id="tVoice">🗣️</button></div>
       </div>
       <div class="panel bubble"><canvas class="bluuIc" id="bluuIc" width="56" height="56" aria-hidden="true"></canvas><div class="say" id="say" aria-live="polite"></div><button class="btn alt small" data-act="speak" aria-label="Ouvir de novo">🔊</button></div>
