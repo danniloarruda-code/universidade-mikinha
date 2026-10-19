@@ -1,5 +1,5 @@
 import { loadLocal, saveLocal, toBackupCode, fromBackupCode } from './storage.js';
-import { EXTRA_SKILLS } from './skills.js';
+import { EXTRA_SKILLS, fmtMoney, moneyTask, fmtTime, fmtDur, clockTime, timeOpts, durOpts } from './skills.js';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
@@ -14,7 +14,7 @@ const DEBUG = location.hash === '#debug';
 if (DEBUG) { window.requestAnimationFrame = cb => setTimeout(() => cb(performance.now()), 16); window.cancelAnimationFrame = id => clearTimeout(id); }
 
 /* ================= DATA ================= */
-const SKILLS = { add:'Adição', sub:'Subtração', mul:'Multiplicação', share:'Divisão: repartir', rem:'Divisão: sobras (resto)', group:'Divisão: fazer grupos', fact:'Divisão pela tabuada', chave:'Divisão: conta na chave' };
+const SKILLS = { add:'Adição', sub:'Subtração', mul:'Multiplicação', din:'Dinheiro', hora:'Horas e relógio', share:'Divisão: repartir', rem:'Divisão: sobras (resto)', group:'Divisão: fazer grupos', fact:'Divisão pela tabuada', chave:'Divisão: conta na chave' };
 const FRIENDS = [['🐸','Sapinho'],['🐰','Coelhinha'],['🦊','Raposinha'],['🐢','Tartaruga'],['🐒','Macaquinho'],['🦄','Unicórnio'],['🐱','Gatinha'],['🐧','Pinguim'],['🐨','Coalinha']];
 const ISLANDS = [
   { id:'praia', name:'Praia das Conchas', icon:'🏝️', genre:'Aventura', skill:'Repartir', game:'praia', ctrl:['⬅⬆⬇➡ ou WASD: andar','Clique no chão: andar até lá','Espaço ou clique na casinha: entregar'],
@@ -38,8 +38,11 @@ const FACS = [
   { id:'soma', name:'Faculdade da Adição', short:'Adição', icon:'➕', skill:'add', verb:'somar', blurb:'Juntar, somar e o famoso "vai um".' },
   { id:'subt', name:'Faculdade da Subtração', short:'Subtração', icon:'➖', skill:'sub', verb:'subtrair', blurb:'Tirar, comparar e pegar emprestado.' },
   { id:'mult', name:'Faculdade da Multiplicação', short:'Multiplicação', icon:'✖️', skill:'mul', verb:'multiplicar', blurb:'Tabuadas e contas de vezes.' },
-  { id:'divi', name:'Faculdade da Divisão', short:'Divisão', icon:'➗', reino:true, blurb:'O Reino das Ilhas: repartir, grupos, sobras e a conta na chave.' }
+  { id:'divi', name:'Faculdade da Divisão', short:'Divisão', icon:'➗', reino:true, blurb:'O Reino das Ilhas: repartir, grupos, sobras e a conta na chave.' },
+  { id:'dinh', name:'Faculdade do Dinheiro', short:'Dinheiro', de:'do', icon:'💰', skill:'din', verb:'contar dinheiro', blurb:'Pagar com notas e moedas e dar o troco certo.', modes:['mercado', 'castelo'] },
+  { id:'temp', name:'Faculdade do Tempo', short:'Tempo', de:'do', icon:'⏰', skill:'hora', verb:'ler as horas', blurb:'Ler o relógio, acertar os ponteiros e calcular quanto tempo passou.', modes:['relogio', 'castelo'] }
 ];
+const facModes = f => f.modes || ['arena', 'caverna', 'armada', 'castelo'];
 const MODES = {
   arena:{ game:'arena', name:'Arena', icon:'⚔️', genre:'Batalha', ctrl:['⬅⬆⬇➡ ou WASD: andar','Toque ou clique no robô: atirar','Espaço: atirar no robô mais perto'],
     intro:f => `Acerte o robô que tem a conta certa e junte 10 gemas antes do tempo acabar! Hoje as contas são de ${f.short.toLowerCase()}.` },
@@ -48,10 +51,14 @@ const MODES = {
   armada:{ game:'armada', name:'Conta Armada', icon:'🧮', genre:'Lousa', ctrl:['Digite os números no teclado ou toque neles','Comece sempre pela direita: as unidades'],
     min:{ add:3, sub:3, mul:8 },
     intro:f => `Monte a conta em pé, igual no caderno! Resolva uma coluna de cada vez, começando pela direita, nas unidades.${f.skill === 'sub' ? ' Quando o número de cima for menor, pegue emprestado.' : ' Quando passar de 9, leve o número para a coluna do lado.'}` },
+  mercado:{ game:'mercado', name:'Mercadinho', solo:true, icon:'🛒', genre:'Loja', ctrl:['Toque nas notas e moedas para colocar no balcão','Toque no dinheiro do balcão para devolver'],
+    intro:() => 'Você trabalha no mercadinho! Pague as compras com o valor certinho e dê o troco certo para os clientes. Quanto mais certinho, mais o caixa enche!' },
+  relogio:{ game:'relogio', name:'Relógio Mágico', solo:true, icon:'🕰️', genre:'Enigma', ctrl:['Toque na resposta certa','Use os botões para girar os ponteiros'],
+    intro:() => 'O Relógio Mágico da torre está bagunçado! Leia as horas, acerte os ponteiros e descubra quanto tempo passou para consertar o relógio.' },
   castelo:{ game:'castelo', name:'Castelo', icon:'🏰', genre:'Chefão', ctrl:['⬅⬆⬇➡ ou WASD: andar','Toque no chão: andar até lá','Encoste na bola com a resposta certa'],
     intro:f => `O Dragão Guloso não sabe ${f.verb}! Desvie do fogo e, quando ele cansar, encoste na bola com a resposta certa. Acerte 6 vezes!` }
 };
-const facIsland = (f, m) => ({ id:`${f.id}-${m}`, name:`${MODES[m].name} da ${f.short}`, icon:MODES[m].icon, genre:MODES[m].genre, game:MODES[m].game,
+const facIsland = (f, m) => ({ id:`${f.id}-${m}`, name:MODES[m].solo ? MODES[m].name : `${MODES[m].name} ${f.de || 'da'} ${f.short}`, icon:MODES[m].icon, genre:MODES[m].genre, game:MODES[m].game,
   ctrl:MODES[m].ctrl, intro:MODES[m].intro(f), skills:[f.skill], verb:f.verb, fac:f.id });
 
 const ITEMS = {
@@ -288,6 +295,27 @@ function ask({ q, a, skill, key = '', hint = '', reveal = '', choices = null, no
     }, hint() { usedHint = true; say(hint); } };
     say(q); draw();
     box.scrollIntoView({ block:'nearest', behavior:'smooth' });
+  });
+}
+/** a question whose options are text or small pictures (times, clocks); opts: [{ v, html }] */
+function askPick({ q, opts, a, skill, key = '', hint = '', reveal = '' }) {
+  return new Promise(res => {
+    const box = $('#askBox'), t0 = performance.now(); let tries = 0, usedHint = false; const tried = new Set();
+    function draw() {
+      box.hidden = false;
+      box.innerHTML = `<div class="askq">${q}</div><div class="choices">${opts.map((o, i) => `<button class="choice pickopt ${tried.has(o.v) ? 'no' : ''} ${tries >= 2 && o.v === a ? 'glow' : ''}" data-pk="${i}">${o.html ?? o.v}</button>`).join('')}</div>`
+        + (hint ? `<button class="btn alt small" data-h="1">💡 Dica do Bluu</button>` : '');
+    }
+    function submit(o) {
+      if (o.v === a) { if (tries === 0) record(skill, true, { fast:performance.now() - t0 < 8000, hint:usedHint, key }); sfx.ding(); close(); res({ first:tries === 0 }); return; }
+      if (tries === 0) record(skill, false, { key });
+      tries++; tried.add(o.v); sfx.hmm(); say(tries >= 2 ? reveal : `Quase! ${hint}`); draw();
+    }
+    function onClick(e) { const b = e.target.closest('button'); if (!b) return; if (b.dataset.h) { usedHint = true; say(hint); return; } if (b.dataset.pk !== undefined) submit(opts[+b.dataset.pk]); }
+    function close() { box.removeEventListener('click', onClick); box.hidden = true; box.innerHTML = ''; activeAsk = null; }
+    box.addEventListener('click', onClick);
+    activeAsk = { key(e) { const i = '1234'.indexOf(e.key); if (i >= 0 && opts[i] && !tried.has(opts[i].v)) { submit(opts[i]); return true; } return false; }, hint() { usedHint = true; say(hint); } };
+    say(q); draw(); box.scrollIntoView({ block:'nearest', behavior:'smooth' });
   });
 }
 /* asks the name of a flashing part of the bracket; renders chips into container */
@@ -536,7 +564,7 @@ function renderFac(id) {
   const step = mstep(f.skill), st = save.stats.skill[f.skill] || { a:0, c:0 };
   $('#facSkill').innerHTML = `<h3>Nível ${step} de 10</h3><p style="margin:6px 0">${stepRange(f.skill, step)}</p>${levelBar(step)}
     <p class="muted" style="margin:8px 0 0">${st.a ? `Acertou de primeira ${Math.round(st.c / st.a * 100)}% das ${st.a} contas. ` : ''}O nível sobe e desce sozinho conforme ela acerta e erra.</p>`;
-  $('#facModes').innerHTML = Object.keys(MODES).map(m => {
+  $('#facModes').innerHTML = facModes(f).map(m => {
     const I = facIsland(f, m), plays = save.plays[I.id] || 0, min = MODES[m].min && MODES[m].min[f.skill], locked = min && step < min && !save.teacher;
     return `<button class="island" ${locked ? 'disabled' : `data-fac-mode="${m}" data-fac-id="${f.id}"`}><span class="ic">${locked ? '🔒' : I.icon}</span><span class="nm">${I.name}</span><span class="gn">${I.genre}</span>${locked ? `<span class="muted">Abre no nível ${min}</span>` : plays ? `<span class="muted">Jogou ${plays}×</span>` : ''}</button>`;
   }).join('');
@@ -671,7 +699,7 @@ function finishPhase(extraText = '') {
 }
 /* ================= MASTERY, SPACED REVIEW AND THE DAILY MISSION ================= */
 // curriculum order: when nothing else decides, earlier skills come first
-const ORDER = ['add', 'sub', 'mul', 'share', 'group', 'rem', 'fact', 'chave'];
+const ORDER = ['add', 'sub', 'mul', 'din', 'hora', 'share', 'group', 'rem', 'fact', 'chave'];
 // Leitner boxes: a skill in box n comes back for review after GAPS[n] days
 const GAPS = [0, 1, 2, 4, 7, 14];
 const rev = sk => save.review[sk] || (save.review[sk] = { box:0, due:null, seen:0 });
@@ -695,6 +723,7 @@ function missionIsland(sk, avoidGame) {
   if (div[sk]) { const opts = div[sk].filter(i => ISLANDS[i].game !== avoidGame); return { ...ISLANDS[pick(opts.length ? opts : div[sk])] }; }
   if (sk === 'fact') return { id:'fact-arena', name:'Arena da Tabuada', icon:'⚔️', genre:'Batalha', game:'arena', ctrl:MODES.arena.ctrl, intro:'Acerte o robô com a divisão certa! Pense na tabuada: 3 × 4 = 12, então 12 ÷ 3 = 4.', skills:['fact'], verb:'dividir' };
   const f = FACS.find(x => x.skill === sk);
+  if (f.modes) return facIsland(f, f.modes[0]); // money and time have their own game
   const modes = ['arena', 'caverna', ...(mstep(sk) >= MODES.armada.min[sk] ? ['armada', 'armada'] : [])].filter(m => MODES[m].game !== avoidGame);
   return facIsland(f, pick(modes));
 }
@@ -1224,6 +1253,158 @@ GAMES.armada = function () {
   return { stop() { alive = false; }, hint() { if (activeAsk && activeAsk.hint) activeAsk.hint(); else say('Comece sempre pela direita, nas unidades, e resolva uma coluna de cada vez.'); } };
 };
 
+/* ================= MERCADINHO: paying exact amounts and giving change ================= */
+// Real banknote colors and the animals printed on them
+const NOTES = { 200:['#7aa6c2', '🐢'], 500:['#a67bc9', '🦢'], 1000:['#d9534f', '🦜'], 2000:['#f0a83a', '🐒'], 5000:['#c98a4b', '🐆'], 10000:['#4a86c8', '🐟'] };
+function moneyEl(v, attrs = '') {
+  if (v >= 200) return `<button class="note" style="--nc:${NOTES[v][0]}" ${attrs} aria-label="Nota de ${fmtMoney(v)}"><span class="nv">${fmtMoney(v)}</span><span class="na" aria-hidden="true">${NOTES[v][1]}</span></button>`;
+  return `<button class="coin ${v === 100 ? 'c1' : v >= 25 ? 'cg' : 'cs'}" ${attrs} aria-label="Moeda de ${fmtMoney(v)}">${v === 100 ? '1' : v}<small>${v === 100 ? 'real' : 'centavos'}</small></button>`;
+}
+/** a way to make an amount with the biggest pieces first (shown after two wrong tries) */
+function makeChange(amount, wallet) { const out = []; for (const v of [...wallet].sort((a, b) => b - a)) while (amount >= v) { out.push(v); amount -= v; } return out; }
+GAMES.mercado = function () {
+  setTouch(null);
+  const box = $('#stageBox'), TOTAL = 5;
+  let alive = true, n = 0, T = null, tray = [], tries = 0, cash = 0, t0 = 0, msg = '', locked = false;
+  const sum = a => a.reduce((x, y) => x + y, 0);
+  const need = () => T.kind === 'pay' ? sum(T.prices) : T.paid - sum(T.prices);
+  function draw() {
+    const inTray = sum(tray);
+    box.innerHTML = `<div class="mercado">
+      <div class="vtop"><span class="sign">🛒 Mercadinho da Mikinha</span><span class="pill">💰 Caixa: ${fmtMoney(cash)}</span></div>
+      <div class="cliente"><span class="cface" aria-hidden="true">${T.face}</span><div class="cbubble">${T.items.map((it, i) => `<span class="tagp"><span aria-hidden="true">${it[0]}</span> ${fmtMoney(T.prices[i])}</span>`).join('')}
+        ${T.kind === 'change' ? `<div class="paidw"><span>Pagou com</span>${moneyEl(T.paid, 'disabled tabindex="-1"')}</div>` : ''}</div></div>
+      <p class="vq">${msg}</p>
+      <div class="balcao2"><span class="tag">${T.kind === 'pay' ? 'Pagamento' : 'Troco'} no balcão · toque para devolver</span><div class="tray">${tray.map((v, i) => moneyEl(v, `data-tray="${i}"`)).join('') || '<span class="empty">Vazio</span>'}</div>
+        ${T.showTotal ? `<div class="vcnt">No balcão: ${fmtMoney(inTray)}</div>` : ''}</div>
+      <div class="wallet"><span class="tag">${T.kind === 'pay' ? 'Sua carteira · toque para colocar no balcão' : 'Caixa registradora · toque para dar o troco'}</span><div class="wl">${T.wallet.map(v => moneyEl(v, `data-add="${v}"`)).join('')}</div></div>
+      <div class="controls"><button class="btn alt" data-mclear="1">Limpar</button><button class="btn" data-mok="1">${T.kind === 'pay' ? 'Pagar ✔' : 'Dar o troco ✔'}</button></div></div>`;
+  }
+  function newTask() {
+    T = moneyTask(mstep('din')); const fr = pick(FRIENDS); T.face = fr[0]; tray = []; tries = 0; t0 = performance.now(); locked = false;
+    const names = T.items.map(i => i[1]).join(' e ');
+    msg = T.kind === 'pay' ? `${fr[1]} vende ${names} por ${fmtMoney(sum(T.prices))}. Pague o valor certinho!`
+      : `${fr[1]} comprou ${names} por ${fmtMoney(sum(T.prices))} e pagou com ${fmtMoney(T.paid)}. Dê o troco certo!`;
+    $('#gInfo').textContent = `Cliente ${n + 1} de ${TOTAL}`;
+    draw(); say(msg);
+  }
+  async function check() {
+    const got = sum(tray), want = need();
+    if (got === want) {
+      locked = true;
+      if (tries === 0) record('din', true, { fast:performance.now() - t0 < 15000, key:`${T.kind}${want}` });
+      cash += sum(T.prices); n++; sfx.yay(); confetti(25);
+      say(pick(['Certinho!', 'Perfeito!', 'Isso mesmo!']) + (T.kind === 'pay' ? ` Você pagou ${fmtMoney(want)}.` : ` O troco foi ${fmtMoney(want)}.`));
+      draw();
+      await askButton(n < TOTAL ? 'Próximo cliente ➜' : 'Fechar o mercadinho ⭐');
+      if (!alive) return;
+      if (n < TOTAL) newTask(); else finishPhase(`O mercadinho atendeu ${TOTAL} clientes! 🛒 Caixa do dia: ${fmtMoney(cash)}.`);
+      return;
+    }
+    if (tries === 0) record('din', false, { key:`${T.kind}${want}` });
+    tries++; sfx.hmm();
+    const d = got - want;
+    if (tries >= 2) say(`Precisa ser ${fmtMoney(want)}. Uma forma: ${makeChange(want, T.wallet).map(fmtMoney).join(' + ')}.`);
+    else say(d < 0 ? `Você colocou ${fmtMoney(got)}. Ainda falta dinheiro! Coloque mais.` : `Você colocou ${fmtMoney(got)}. Passou do valor! Toque em alguma nota ou moeda do balcão para devolver.`);
+  }
+  const onClick = e => {
+    if (blocked() || locked || !T) return;
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.add) { tray.push(+b.dataset.add); tray.sort((x, y) => y - x); sfx.pop(); draw(); }
+    else if (b.dataset.tray !== undefined) { tray.splice(+b.dataset.tray, 1); sfx.back(); draw(); }
+    else if (b.dataset.mclear) { tray = []; sfx.back(); draw(); }
+    else if (b.dataset.mok) check();
+  };
+  box.addEventListener('click', onClick);
+  newTask();
+  if (DEBUG) window.__g = { get T() { return T; }, need, setTray:v => { tray = v; draw(); }, check };
+  return { stop() { alive = false; box.removeEventListener('click', onClick); },
+    hint() { if (activeAsk && activeAsk.hint) return activeAsk.hint(); if (!T) return; say(T.kind === 'pay' ? 'Comece pelas notas maiores que cabem no preço. Depois complete com as menores.' : `Conte para cima: comece no ${fmtMoney(sum(T.prices))} e vá juntando dinheiro até chegar no ${fmtMoney(T.paid)}.`); } };
+};
+
+/* ================= RELÓGIO MÁGICO: reading and setting the clock, durations ================= */
+function clockSVG(t, size = 220, label = '') {
+  const hh = (Math.floor(t / 60) % 12) + (t % 60) / 60, ah = hh * 30, am = (t % 60) * 6;
+  let s = `<svg viewBox="0 0 200 200" width="${size}" height="${size}" role="img" aria-label="Relógio${label ? ' ' + label : ''}"><circle cx="100" cy="100" r="93" fill="#fffaf0" stroke="#cf8d3c" stroke-width="8"/>`;
+  for (let i = 0; i < 60; i++) { const a = i * 6 * Math.PI / 180, r1 = i % 5 ? 84 : 79; s += `<line x1="${100 + Math.sin(a) * r1}" y1="${100 - Math.cos(a) * r1}" x2="${100 + Math.sin(a) * 88}" y2="${100 - Math.cos(a) * 88}" stroke="#5d5070" stroke-width="${i % 5 ? 1.5 : 3.5}"/>`; }
+  for (let i = 1; i <= 12; i++) { const a = i * 30 * Math.PI / 180; s += `<text x="${100 + Math.sin(a) * 64}" y="${100 - Math.cos(a) * 64 + 7}" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="20" fill="#2a2140">${i}</text>`; }
+  s += `<line x1="100" y1="100" x2="100" y2="54" stroke="#ff6b5b" stroke-width="10" stroke-linecap="round" transform="rotate(${ah} 100 100)"/>`;
+  s += `<line x1="100" y1="100" x2="100" y2="26" stroke="#2f6fdc" stroke-width="6" stroke-linecap="round" transform="rotate(${am} 100 100)"/>`;
+  return s + `<circle cx="100" cy="100" r="7" fill="#2a2140"/></svg>`;
+}
+GAMES.relogio = function () {
+  setTouch(null);
+  const box = $('#stageBox'), TOTAL = 5; let alive = true, n = 0;
+  box.innerHTML = `<div class="relogio"><div id="rView" class="rview"></div><div id="rCtl"></div></div>`;
+  const view = (h, ctl = '') => { $('#rView').innerHTML = h; $('#rCtl').innerHTML = ctl; };
+  const legend = '<p class="muted" style="margin:0">O ponteiro <b style="color:#ff6b5b">pequeno</b> mostra as horas. O <b style="color:#2f6fdc">grande</b> mostra os minutos.</p>';
+  async function read(step) {
+    const t = clockTime(step), h24 = step >= 9, a = fmtTime(t, h24);
+    view(`${clockSVG(t, 240)}${step >= 9 ? `<p class="vq">${t >= 720 ? 'É de tarde ou de noite 🌙' : 'É de manhã ☀️'}</p>` : ''}${step <= 4 ? legend : ''}`);
+    await askPick({ q:h24 ? 'Que horas são no relógio de 24 horas?' : 'Que horas o relógio está marcando?', opts:timeOpts(t, step).map(v => ({ v })), a, skill:'hora', key:`ler ${a}`,
+      hint:`Olhe primeiro o ponteiro pequeno: ele está ${t % 60 ? 'depois do' : 'em cima do'} ${(Math.floor(t / 60) + 11) % 12 + 1}. Depois veja para onde o grande aponta: cada número vale 5 minutos.${h24 && t >= 720 ? ' De tarde, some 12 nas horas.' : ''}`,
+      reveal:`São ${a}.` });
+  }
+  async function setClock(step) {
+    const target = clockTime(Math.min(step, 5)) % 720, inc = step <= 1 ? 60 : step === 2 ? 30 : step === 3 ? 15 : 5;
+    let cur = (target + 60 * rand(2, 5) + (inc < 60 ? inc * rand(1, 3) : 0)) % 720, tries = 0;
+    const t0 = performance.now();
+    await new Promise(res => {
+      const draw = (glow = false) => view(`<div class="rtarget">Acerte o relógio para <b>${fmtTime(target)}</b></div>${clockSVG(cur, 240)}${step <= 4 ? legend : ''}`,
+        `<div class="controls"><button class="btn alt" data-rt="-60">⏪ −1 hora</button><button class="btn alt" data-rt="60">+1 hora ⏩</button>${inc < 60 ? `<button class="btn alt" data-rt="-${inc}">− ${inc} min</button><button class="btn alt" data-rt="${inc}">+ ${inc} min</button>` : ''}<button class="btn ${glow ? 'gold' : ''}" data-rt="ok">Pronto ✔</button></div>`);
+      draw();
+      say(`Gire os ponteiros até o relógio marcar ${fmtTime(target)}.`);
+      const onClick = e => {
+        const b = e.target.closest('[data-rt]'); if (!b || !$('#overlay').hidden) return;
+        if (b.dataset.rt !== 'ok') { cur = (cur + +b.dataset.rt + 720) % 720; sfx.pop(); draw(); return; }
+        if (cur === target) { if (tries === 0) record('hora', true, { fast:performance.now() - t0 < 15000, key:`acertar ${fmtTime(target)}` }); sfx.ding(); box.removeEventListener('click', onClick); activeAsk = null; res(); return; }
+        if (tries === 0) record('hora', false, { key:`acertar ${fmtTime(target)}` });
+        tries++; sfx.hmm();
+        const ch = Math.floor(cur / 60) % 12 !== Math.floor(target / 60) % 12, cm = cur % 60 !== target % 60;
+        if (tries >= 2) { cur = target; draw(true); say(`Assim: o ponteiro pequeno no ${(Math.floor(target / 60) + 11) % 12 + 1} e o grande no ${target % 60 ? (target % 60) / 5 : 12}. Agora toque em Pronto.`); }
+        else say(`Quase! ${ch ? 'As horas ainda não estão certas: mexa o ponteiro pequeno com os botões de hora.' : ''} ${cm ? `Os minutos ainda não estão certos: o ponteiro grande precisa apontar para o ${target % 60 ? (target % 60) / 5 : 12}.` : ''}`);
+      };
+      box.addEventListener('click', onClick);
+      activeAsk = { key:() => false, hint() { say(`O ponteiro pequeno vai no ${(Math.floor(target / 60) + 11) % 12 + 1}. O grande aponta para o ${target % 60 ? (target % 60) / 5 : 12}, porque cada número vale 5 minutos.`); } };
+    });
+  }
+  async function duration(step) {
+    const start = clockTime(step === 10 ? 4 : step === 7 ? 2 : 1) % 720, dur = step === 6 ? 60 * rand(1, 4) : step === 7 ? 30 * rand(1, 7) : 5 * rand(7, 40), a = fmtDur(dur);
+    view(`<div class="clocks"><figure>${clockSVG(start, 170, 'começou')}<figcaption>Começou</figcaption></figure><span class="arrow" aria-hidden="true">➜</span><figure>${clockSVG(start + dur, 170, 'terminou')}<figcaption>Terminou</figcaption></figure></div>`);
+    await askPick({ q:`A aula de natação começou às ${fmtTime(start)} e terminou às ${fmtTime(start + dur)}. Quanto tempo durou?`, opts:durOpts(dur).map(v => ({ v })), a, skill:'hora', key:`duração ${a}`,
+      hint:`Conte as horas inteiras a partir de ${fmtTime(start)}, sem passar de ${fmtTime(start + dur)}. Depois conte os minutos que faltam.`, reveal:`De ${fmtTime(start)} até ${fmtTime(start + dur)} passaram ${a}.` });
+  }
+  async function after(step) {
+    const t = clockTime(4) % 720, add = step === 8 ? pick([10, 15, 20, 30, 40, 45]) : pick([25, 35, 50, 70, 85]), a = fmtTime(t + add);
+    view(`${clockSVG(t, 220)}<p class="vq">O bolo vai ficar pronto daqui a <b>${add} minutos</b>.</p>`);
+    await askPick({ q:`Agora são ${fmtTime(t)}. Que horas o bolo vai ficar pronto?`, opts:timeOpts(t + add, 4).map(v => ({ v })), a, skill:'hora', key:`depois ${fmtTime(t)}+${add}`,
+      hint:`Some ${add} aos minutos. Se passar de 60 minutos, vira mais 1 hora.`, reveal:`${fmtTime(t)} mais ${add} minutos dá ${a}.` });
+  }
+  async function h24(step) {
+    const t = rand(13, 22) * 60 + pick([0, 15, 30, 45]), wrong = [t + 60, t - 120, ((t % 60) / 5 % 12) * 60 + (Math.floor(t / 60) % 12) * 5].map(x => ((x % 1440) + 1440) % 1440);
+    const uniq = [t]; for (const x of wrong) if (!uniq.some(u => u % 720 === x % 720)) uniq.push(x);
+    const opts = shuffle(uniq.slice(0, 3)).map(x => ({ v:fmtTime(x), html:clockSVG(x, 110) }));
+    view(`<div class="rtarget">O filme começa às <b>${fmtTime(t, true)}</b></div>`);
+    await askPick({ q:'Qual relógio de ponteiros mostra esse horário?', opts, a:fmtTime(t), skill:'hora', key:`24h ${fmtTime(t, true)}`,
+      hint:`Depois do meio-dia, tire 12 das horas: ${Math.floor(t / 60)} − 12 = ${Math.floor(t / 60) - 12}.`, reveal:`${fmtTime(t, true)} é ${fmtTime(t)} da tarde.` });
+  }
+  async function run() {
+    while (alive && n < TOTAL) {
+      const step = mstep('hora'), types = step <= 5 ? ['read', 'set'] : step <= 7 ? ['duration', 'read'] : step === 8 ? ['after', 'set'] : step === 9 ? ['h24', 'read'] : ['duration', 'after'];
+      $('#gInfo').textContent = `Desafio ${n + 1} de ${TOTAL}`;
+      const type = types[n % 2];
+      await ({ read, set:setClock, duration, after, h24 })[type](step);
+      if (!alive) return;
+      n++; sfx.yay(); confetti(20);
+      if (n < TOTAL) await wait(700);
+    }
+    if (alive) finishPhase('O Relógio Mágico está funcionando direitinho! 🕰️');
+  }
+  run();
+  if (DEBUG) window.__g = { get n() { return n; } };
+  return { stop() { alive = false; }, hint() { if (activeAsk && activeAsk.hint) activeAsk.hint(); else say('O ponteiro pequeno mostra as horas e o grande mostra os minutos. Cada número do relógio vale 5 minutos.'); } };
+};
+
 /* ================= ARENA: gem-grab battle, everything mixed ================= */
 GAMES.arena = function () {
   const W = 960, H = 560, { cv, c } = makeCanvas(W, H); setTouch('pad');
@@ -1638,7 +1819,7 @@ GAMES.castelo = function () {
   }
   function makeQ() {
     const skill = pick(RUN.island.skills || ['share','group','rem','fact','chave','chave']), st = mstep(skill);
-    if (EXTRA_SKILLS[skill]) { const Q = quiz(skill, st); return { skill, a:Q.a, key:Q.key, text:`${Q.left} ${Q.op} ${Q.right} = ?`, hint:Q.hint, opts:makeChoices(Q.a, st) }; }
+    if (EXTRA_SKILLS[skill]) { const Q = quiz(skill, st); return { skill, a:Q.a, key:Q.key, text:Q.text || `${Q.left} ${Q.op} ${Q.right} = ?`, hint:Q.hint, opts:Q.opts || makeChoices(Q.a, st), fmt:Q.fmt }; }
     if (skill === 'chave') {
       const m = genChave(clamp(st, 2, 9)), askRes = m.L.r > 0 && Math.random() < .5, a = askRes ? m.L.r : m.L.q;
       return { skill, a, m, askRes, key:`${m.N}÷${m.d}`, text:`Na chave ${m.N} ÷ ${m.d}: qual é o ${askRes ? 'RESTO' : 'QUOCIENTE'}?`,
@@ -1652,7 +1833,7 @@ GAMES.castelo = function () {
     if (noHit) gameEvent(true);
     state = 'question'; fire = []; Q = makeQ(); Q.tries = 0; Q.t0 = performance.now(); Q.arm = 1.2;
     const n = Q.opts.length;
-    orbs = Q.opts.map((v, i) => ({ v, x:140 + i * (680 / (n - 1)), y:330 + (i % 2) * 50, dead:false }));
+    orbs = Q.opts.map((v, i) => ({ v, label:String(Q.fmt ? Q.fmt(v) : v), x:140 + i * (680 / (n - 1)), y:330 + (i % 2) * 50, dead:false }));
     if (p.y < 470) p.y = 500;
     say(`O dragão cansou! ${Q.text} Encoste na bola certa!`);
     if (Q.skill === 'chave') {
@@ -1672,7 +1853,8 @@ GAMES.castelo = function () {
     } else {
       if (Q.tries === 0) record(Q.skill, false, { key:Q.key });
       Q.tries++; o.dead = true; sfx.hmm(); burst(parts, o.x, o.y, '#9a95a8', 10);
-      say(Q.tries >= 2 ? `A resposta é ${Q.a}! A bola certa está brilhando.` : `O dragão riu! Não é ${o.v}. Dica: ${Q.hint}`);
+      const show = v => Q.fmt ? Q.fmt(v) : v;
+      say(Q.tries >= 2 ? `A resposta é ${show(Q.a)}! A bola certa está brilhando.` : `O dragão riu! Não é ${show(o.v)}. Dica: ${Q.hint}`);
     }
   }
   cv.addEventListener('pointerdown', e => { if (blocked() || won) return; const q = canvasPoint(cv, e); p.tx = clamp(q.x, 30, W - 30); p.ty = clamp(q.y, 300, H - 20); });
@@ -1726,14 +1908,19 @@ GAMES.castelo = function () {
     for (const f of fire) emoji(c, '🔥', f.x, f.y, 30);
     if (shot) { c.fillStyle = '#f4bd2a'; c.beginPath(); c.arc(shot.x, shot.y, 22, 0, 7); c.fill(); }
     if (state === 'question' && Q) {
-      c.fillStyle = 'rgba(253,240,200,.95)'; rrect(c, W / 2 - 300, 236, 600, 44, 14); c.fill();
-      c.fillStyle = '#2a2140'; c.font = "24px 'Lilita One',sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(Q.text, W / 2, 259);
+      let fs = 24; c.font = `${fs}px 'Lilita One',sans-serif`;
+      while (c.measureText(Q.text).width > 880 && fs > 14) { fs--; c.font = `${fs}px 'Lilita One',sans-serif`; }
+      const bw = Math.max(600, c.measureText(Q.text).width + 40);
+      c.fillStyle = 'rgba(253,240,200,.95)'; rrect(c, W / 2 - bw / 2, 236, bw, 44, 14); c.fill();
+      c.fillStyle = '#2a2140'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(Q.text, W / 2, 259);
       for (const o of orbs) {
         if (o.dead) continue;
         const glow = Q.tries >= 2 && o.v === Q.a, yy = o.y + Math.sin(t * 3 + o.x) * 5;
         if (glow) { c.fillStyle = 'rgba(244,189,42,.45)'; c.beginPath(); c.arc(o.x, yy, 44, 0, 7); c.fill(); }
-        c.fillStyle = '#fdf0c8'; c.beginPath(); c.arc(o.x, yy, 32, 0, 7); c.fill(); c.strokeStyle = '#cf8d3c'; c.lineWidth = 4; c.stroke();
-        c.fillStyle = '#2a2140'; c.font = `${String(o.v).length > 3 ? 20 : String(o.v).length > 2 ? 25 : 32}px 'Lilita One',sans-serif`; c.fillText(o.v, o.x, yy + 2);
+        const L = o.label.length, ofs = L > 5 ? 20 : L > 3 ? 22 : L > 2 ? 25 : 32; c.font = `${ofs}px 'Lilita One',sans-serif`;
+        const rr = Math.max(32, c.measureText(o.label).width / 2 + 12);
+        c.fillStyle = '#fdf0c8'; c.beginPath(); c.arc(o.x, yy, rr, 0, 7); c.fill(); c.strokeStyle = '#cf8d3c'; c.lineWidth = 4; c.stroke();
+        c.fillStyle = '#2a2140'; c.fillText(o.label, o.x, yy + 2);
       }
     }
     drawBluu(c, bl.x, bl.y, 1, save.equip.hat, t);

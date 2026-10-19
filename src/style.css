@@ -203,6 +203,40 @@ table.steps th{background:var(--sand-deep); font-family:var(--display); font-wei
 .ac.opc{color:var(--coral)}
 @media (max-width:520px){ .armada{font-size:2.1rem; padding:8px 14px} }
 
+/* mercadinho */
+.mercado{display:flex; flex-direction:column; gap:10px; padding:14px; background:var(--sand)}
+.cliente{display:flex; gap:12px; align-items:center; justify-content:center; flex-wrap:wrap}
+.cface{font-size:3.4rem; line-height:1}
+.cbubble{display:flex; flex-wrap:wrap; gap:10px; align-items:center; background:var(--white); border:3px solid var(--sand-edge); border-radius:18px; padding:10px 14px}
+.tagp{font-family:var(--display); font-size:1.4rem; background:var(--sand-deep); border-radius:12px; padding:4px 12px}
+.paidw{display:flex; gap:8px; align-items:center; font-weight:800}
+.balcao2,.wallet{background:var(--white); border:3px dashed var(--sand-edge); border-radius:16px; padding:8px; text-align:center}
+.wallet{border-style:solid; background:var(--sand-deep)}
+.balcao2 .vcnt{display:inline-block; margin-top:4px; padding:2px 12px}
+.tray,.wl{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; align-items:center; min-height:64px; padding:6px}
+.note{position:relative; width:104px; height:54px; border:0; border-radius:8px; background:var(--nc); color:var(--white); cursor:pointer; box-shadow:0 4px 0 rgba(0,0,0,.25); display:flex; align-items:center; justify-content:space-between; padding:0 8px; font-family:var(--display)}
+.note .nv{font-size:1.05rem; text-shadow:0 1px 0 rgba(0,0,0,.3)}
+.note .na{font-size:1.6rem}
+.coin{width:56px; height:56px; border-radius:50%; border:3px solid rgba(0,0,0,.18); cursor:pointer; font-family:var(--display); font-size:1.15rem; line-height:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--ink); box-shadow:0 3px 0 rgba(0,0,0,.25)}
+.coin small{font-family:var(--body); font-size:.5rem; font-weight:900}
+.coin.c1{background:radial-gradient(circle,#f5d97a 45%,#d9dde3 47%)}
+.coin.cg{background:#e8c25a}
+.coin.cs{background:#d3d8df}
+.note:active,.coin:active{transform:translateY(2px)}
+.note[disabled]{cursor:default}
+
+/* relógio mágico */
+.relogio{display:flex; flex-direction:column; align-items:center; gap:10px; padding:14px; background:var(--sand)}
+.rview{display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center}
+.rview svg{max-width:100%; height:auto}
+.rtarget{font-family:var(--display); font-size:1.6rem}
+.rtarget b{font-size:2.2rem; color:var(--dvs)}
+.clocks{display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center}
+.clocks figure{margin:0; display:flex; flex-direction:column; align-items:center; font-weight:800}
+.clocks .arrow{font-size:2rem}
+.choice.pickopt{font-size:1.6rem; padding:.2em .5em; line-height:1}
+.choice.pickopt svg{display:block}
+
 /* daily mission */
 .mission{display:flex; flex-direction:column; gap:10px; border-color:var(--gold-dark); align-items:stretch}
 .mission > .btn{align-self:center}

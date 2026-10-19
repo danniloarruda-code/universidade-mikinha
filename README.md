@@ -19,7 +19,7 @@ Todo `git push` na branch `main` publica sozinho no GitHub Pages, pelo workflow 
 
 - `index.html`: telas do jogo (título, mapa, loja, trilha, professor, fase).
 - `src/game.js`: o jogo (a Universidade, as faculdades, as ilhas da divisão, a dificuldade adaptativa e as telas).
-- `src/skills.js`: as habilidades de adição, subtração e multiplicação, cada uma com 10 níveis (BNCC do 3º e 4º ano). Toda habilidade gera perguntas no mesmo formato, e os modos Arena, Caverna e Castelo aceitam qualquer uma.
+- `src/skills.js`: as habilidades de adição, subtração, multiplicação, dinheiro e horas, cada uma com 10 níveis (BNCC do 3º e 4º ano). As operações geram perguntas "a op b" que Arena, Caverna, Conta Armada e Castelo aceitam; dinheiro e horas geram perguntas de texto usadas pelo Castelo e pelos jogos próprios (Mercadinho e Relógio Mágico).
 - `src/storage.js`: onde o progresso é salvo. O jogo só fala com este módulo, então o salvamento na nuvem entra aqui sem mexer no jogo.
 - `src/cloud.js`: salvamento na nuvem (Firebase). O pai ou a mãe entra com Google no Modo professor e o progresso fica em `familias/{uid}/perfis/mikinha`. A cópia mais nova sempre vence.
 - `src/firebase-config.js`: configuração pública do projeto Firebase (não é segredo).
