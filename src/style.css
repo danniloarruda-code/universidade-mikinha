@@ -6,6 +6,7 @@
   --bluu:#4a86f0; --white:#ffffff; --veil:rgba(6,38,44,.8); --lock:#9c8f7a;
   /* the four parts of the division bracket keep these colors everywhere in the game */
   --dvd:#ef7d16; --dvs:#2f6fdc; --quo:#239a4c; --res:#e0384a;
+  --board:#1f4d3a; --chalk:#f4f1e6; --chalk-soft:#9fd3b8; --wood:#8a5a2b;
   --display:'Lilita One','Trebuchet MS',system-ui,sans-serif;
   --body:'Nunito','Segoe UI',system-ui,sans-serif;
   color-scheme: light;
@@ -190,6 +191,17 @@ button{font:inherit}
 table.steps{border-collapse:collapse; width:100%; min-width:520px; font-size:.88rem; background:var(--white); border-radius:12px; overflow:hidden}
 table.steps th,table.steps td{padding:6px 8px; border-bottom:2px solid var(--sand-deep); text-align:left; vertical-align:top}
 table.steps th{background:var(--sand-deep); font-family:var(--display); font-weight:400}
+
+/* conta armada: a chalkboard */
+.armada{display:inline-grid; column-gap:.12em; font-family:var(--display); font-size:2.8rem; line-height:1.15; background:var(--board); color:var(--chalk); border:8px solid var(--wood); border-radius:16px; padding:10px 22px 14px; font-variant-numeric:tabular-nums; box-shadow:0 5px 0 rgba(0,0,0,.25)}
+.ac{display:block; text-align:center; min-height:1em}
+.ac.place{font-family:var(--body); font-size:.9rem; color:var(--chalk-soft)}
+.ac.note{font-size:1.15rem; color:var(--gold); align-self:end; min-height:1.2rem}
+.ac.struck{text-decoration:line-through; text-decoration-color:var(--coral); text-decoration-thickness:4px; opacity:.7}
+.ac.res{border-top:4px solid var(--chalk); min-height:1.15em}
+.ac.act{background:rgba(244,189,42,.22); outline:3px dashed var(--gold); border-radius:6px; color:var(--gold)}
+.ac.opc{color:var(--coral)}
+@media (max-width:520px){ .armada{font-size:2.1rem; padding:8px 14px} }
 
 /* daily mission */
 .mission{display:flex; flex-direction:column; gap:10px; border-color:var(--gold-dark); align-items:stretch}

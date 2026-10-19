@@ -45,6 +45,9 @@ const MODES = {
     intro:f => `Acerte o robô que tem a conta certa e junte 10 gemas antes do tempo acabar! Hoje as contas são de ${f.short.toLowerCase()}.` },
   caverna:{ game:'caverna', name:'Caverna', icon:'🕯️', genre:'Parkour', ctrl:['⬅ ➡: correr','⬆ ou Espaço: pular'],
     intro:f => `Corra e pule pela caverna! Para abrir cada portão, pule embaixo do bloco com o resultado certo da conta de ${f.short.toLowerCase()}.` },
+  armada:{ game:'armada', name:'Conta Armada', icon:'🧮', genre:'Lousa', ctrl:['Digite os números no teclado ou toque neles','Comece sempre pela direita: as unidades'],
+    min:{ add:3, sub:3, mul:8 },
+    intro:f => `Monte a conta em pé, igual no caderno! Resolva uma coluna de cada vez, começando pela direita, nas unidades.${f.skill === 'sub' ? ' Quando o número de cima for menor, pegue emprestado.' : ' Quando passar de 9, leve o número para a coluna do lado.'}` },
   castelo:{ game:'castelo', name:'Castelo', icon:'🏰', genre:'Chefão', ctrl:['⬅⬆⬇➡ ou WASD: andar','Toque no chão: andar até lá','Encoste na bola com a resposta certa'],
     intro:f => `O Dragão Guloso não sabe ${f.verb}! Desvie do fogo e, quando ele cansar, encoste na bola com a resposta certa. Acerte 6 vezes!` }
 };
@@ -248,7 +251,8 @@ const PARTS = { dvd:['Dividendo','é o total, o que vai ser dividido'], dvs:['Di
 
 /* ================= ASK PANEL ================= */
 let activeAsk = null;
-function ask({ q, a, skill, key = '', hint = '', reveal = '', choices = null }) {
+/** noRecord: the caller records one result for a whole multi-step problem (e.g. a column sum) */
+function ask({ q, a, skill, key = '', hint = '', reveal = '', choices = null, noRecord = false }) {
   return new Promise(res => {
     const box = $('#askBox'), step = mstep(skill), useChoices = choices ?? step <= 3;
     const opts = useChoices ? makeChoices(a, step) : null, tried = new Set(), t0 = performance.now();
@@ -261,8 +265,8 @@ function ask({ q, a, skill, key = '', hint = '', reveal = '', choices = null }) 
         + (hint ? `<button class="btn alt small" data-h="1">💡 Dica do Bluu</button>` : '');
     }
     function submit(v) {
-      if (v === a) { if (tries === 0) record(skill, true, { fast:performance.now() - t0 < 7000, hint:usedHint, key }); sfx.ding(); close(); res({ first:tries === 0 }); return; }
-      if (tries === 0) record(skill, false, { key });
+      if (v === a) { if (tries === 0 && !noRecord) record(skill, true, { fast:performance.now() - t0 < 7000, hint:usedHint, key }); sfx.ding(); close(); res({ first:tries === 0 && !usedHint }); return; }
+      if (tries === 0 && !noRecord) record(skill, false, { key });
       tries++; tried.add(v); val = ''; sfx.hmm(); say(tries >= 2 ? reveal : `Quase! ${hint}`); draw();
     }
     function onClick(e) {
@@ -533,8 +537,8 @@ function renderFac(id) {
   $('#facSkill').innerHTML = `<h3>Nível ${step} de 10</h3><p style="margin:6px 0">${stepRange(f.skill, step)}</p>${levelBar(step)}
     <p class="muted" style="margin:8px 0 0">${st.a ? `Acertou de primeira ${Math.round(st.c / st.a * 100)}% das ${st.a} contas. ` : ''}O nível sobe e desce sozinho conforme ela acerta e erra.</p>`;
   $('#facModes').innerHTML = Object.keys(MODES).map(m => {
-    const I = facIsland(f, m), plays = save.plays[I.id] || 0;
-    return `<button class="island" data-fac-mode="${m}" data-fac-id="${f.id}"><span class="ic">${I.icon}</span><span class="nm">${I.name}</span><span class="gn">${I.genre}</span>${plays ? `<span class="muted">Jogou ${plays}×</span>` : ''}</button>`;
+    const I = facIsland(f, m), plays = save.plays[I.id] || 0, min = MODES[m].min && MODES[m].min[f.skill], locked = min && step < min && !save.teacher;
+    return `<button class="island" ${locked ? 'disabled' : `data-fac-mode="${m}" data-fac-id="${f.id}"`}><span class="ic">${locked ? '🔒' : I.icon}</span><span class="nm">${I.name}</span><span class="gn">${I.genre}</span>${locked ? `<span class="muted">Abre no nível ${min}</span>` : plays ? `<span class="muted">Jogou ${plays}×</span>` : ''}</button>`;
   }).join('');
 }
 function renderMap() {
@@ -690,7 +694,8 @@ function missionIsland(sk, avoidGame) {
   const div = { share:[0, 4], group:[5], rem:[1], chave:[2] };
   if (div[sk]) { const opts = div[sk].filter(i => ISLANDS[i].game !== avoidGame); return { ...ISLANDS[pick(opts.length ? opts : div[sk])] }; }
   if (sk === 'fact') return { id:'fact-arena', name:'Arena da Tabuada', icon:'⚔️', genre:'Batalha', game:'arena', ctrl:MODES.arena.ctrl, intro:'Acerte o robô com a divisão certa! Pense na tabuada: 3 × 4 = 12, então 12 ÷ 3 = 4.', skills:['fact'], verb:'dividir' };
-  const f = FACS.find(x => x.skill === sk), modes = ['arena', 'caverna'].filter(m => MODES[m].game !== avoidGame);
+  const f = FACS.find(x => x.skill === sk);
+  const modes = ['arena', 'caverna', ...(mstep(sk) >= MODES.armada.min[sk] ? ['armada', 'armada'] : [])].filter(m => MODES[m].game !== avoidGame);
   return facIsland(f, pick(modes));
 }
 function buildMission() {
@@ -1090,6 +1095,133 @@ GAMES.torre = function () {
   }
   conta();
   return { stop() { alive = false; }, hint() { if (activeAsk && activeAsk.hint) activeAsk.hint(); else say('Na chave: o dividendo fica à esquerda, o divisor dentro da chave, o quociente embaixo do divisor e o resto embaixo de tudo.'); } };
+};
+
+/* ================= CONTA ARMADA: column addition, subtraction and multiplication ================= */
+const PLACE = ['unidades', 'dezenas', 'centenas', 'unidades de milhar', 'dezenas de milhar'];
+const PLACE_SHORT = ['U', 'D', 'C', 'UM', 'DM'];
+const digitsUF = n => String(n).split('').reverse().map(Number); // units first
+GAMES.armada = function () {
+  setTouch(null);
+  const SK = RUN.island.skills[0], TOTAL = 4, box = $('#stageBox');
+  let alive = true, n = 0, P = null, st = null;
+  box.innerHTML = `<div class="torre"><div class="floors" id="aProg"></div><div class="tcenter"><div id="aBoard"></div><div id="aSum" class="sentence"></div></div><div class="scaf" id="aHelp"></div></div>`;
+  function problem() {
+    // vertical sums only make sense with two or more digits
+    const Q = quiz(SK, Math.max(MODES.armada.min[SK], mstep(SK)));
+    let a = Q.left, b = Q.right; if (SK === 'mul' && a < b) [a, b] = [b, a];
+    return { a, b, op:Q.op, res:Q.a, key:Q.key };
+  }
+  function prog() {
+    $('#aProg').innerHTML = [...Array(TOTAL)].map((_, i) => `<div class="floor ${i < n ? 'lit' : i === n ? 'cur' : ''}">${i < n ? '⭐' : i === n ? '✏️' : ''}</div>`).join('') + '<div style="font-size:2rem" aria-hidden="true">🧮</div>';
+    $('#gInfo').textContent = `Conta ${Math.min(n + 1, TOTAL)} de ${TOTAL}`;
+  }
+  function render(active = null) {
+    const L = st.L, cols = L + 1, cell = (r, c, t, cls = '') => `<span class="ac ${cls}" style="grid-row:${r};grid-column:${c}">${t}</span>`;
+    let h = `<div class="armada" role="img" aria-label="Conta armada: ${P.a} ${P.op} ${P.b}" style="grid-template-columns:repeat(${cols}, minmax(.9em, auto))">`;
+    if (mstep(SK) <= 6 || SK === 'mul') for (let i = 0; i < L; i++) h += cell(1, cols - i, PLACE_SHORT[i], 'place');
+    for (let i = 0; i < L; i++) {
+      const c = cols - i;
+      h += cell(2, c, st.note[i] ?? '', 'note');
+      h += cell(3, c, i < st.orig.length ? st.orig[i] : '', st.struck[i] ? 'struck' : '');
+      h += cell(4, c, i < st.bot.length ? st.bot[i] : '');
+      h += cell(5, c, st.res[i] ?? (active === i ? '?' : ''), `res ${active === i ? 'act' : ''}`);
+    }
+    h += cell(4, 1, P.op, 'opc') + cell(5, 1, '', 'res') + '</div>';
+    $('#aBoard').innerHTML = h;
+  }
+  function help() {
+    let h = '<b>Lembre</b><span>Comece pela direita: primeiro as unidades, depois as dezenas, depois as centenas.</span>';
+    if (SK === 'add') h += '<span>Se a coluna passar de 9, escreva só a unidade e leve o 1 para a coluna do lado.</span>';
+    if (SK === 'sub') h += '<span>Se o número de cima for menor, pegue 1 emprestado da coluna do lado. Ele vira 10 a mais!</span>';
+    if (SK === 'mul') h += `<b>Tabuada do ${P.b}</b><div class="tab">${[...Array(9)].map((_, i) => `<span>${i + 1} × ${P.b} = ${(i + 1) * P.b}</span>`).join('')}</div>`;
+    $('#aHelp').innerHTML = h;
+  }
+  let allFirst = true;
+  async function step(q, a, hint, reveal) {
+    const r = await ask({ q, a, skill:SK, key:P.key, hint, reveal, choices:false, noRecord:true });
+    if (!r.first) allFirst = false;
+  }
+  function borrow(i) {
+    let j = i + 1; while (st.top[j] === 0) j++;
+    st.top[j] -= 1; st.struck[j] = true; st.note[j] = st.top[j];
+    for (let k = j - 1; k > i; k--) { st.top[k] = 9; st.struck[k] = true; st.note[k] = 9; }
+    st.top[i] += 10; st.struck[i] = true; st.note[i] = st.top[i];
+    return j;
+  }
+  async function solveAdd(da, db) {
+    let carry = 0; const last = Math.max(da.length, db.length) - 1;
+    for (let i = 0; i <= last && alive; i++) {
+      const terms = [];
+      if (i < da.length) terms.push(da[i]); if (i < db.length) terms.push(db[i]);
+      const s = terms.reduce((x, y) => x + y, 0) + carry, big = Math.max(...terms), small = s - carry - big;
+      render(i);
+      await step(`Coluna das ${PLACE[i]}: quanto é ${terms.join(' + ')}${carry ? ' + 1 (o que veio)' : ''}?`, s,
+        terms.length > 1 ? `Comece no ${big} e conte mais ${small}${carry ? ', e mais 1 do "vai um"' : ''}.` : `Nessa coluna só tem o ${big}${carry ? ' e o 1 que veio' : ''}.`, `${terms.join(' + ')}${carry ? ' + 1' : ''} = ${s}.`);
+      if (!alive) return;
+      if (s >= 10 && i < last) {
+        st.res[i] = s % 10; render(); say(`${s}! Escreve o ${s % 10} embaixo, e o 1 vai para a coluna das ${PLACE[i + 1]}.`);
+        await askButton('⬆ Levar o 1'); st.note[i + 1] = 1; carry = 1;
+      } else if (s >= 10) { st.res[i] = s % 10; st.res[i + 1] = 1; say(`Última coluna: ${s}. Como não tem mais coluna, escreve o ${s} inteiro!`); carry = 0; }
+      else { st.res[i] = s; carry = 0; }
+      render(); sfx.pop();
+    }
+  }
+  async function solveSub(da, db) {
+    const len = String(P.res).length;
+    for (let i = 0; i < da.length && alive; i++) {
+      if (i >= len) break; // only leading zeros left
+      const y = db[i] || 0;
+      render(i);
+      if (st.top[i] < y) {
+        say(`${st.top[i]} − ${y} não dá, porque ${st.top[i]} é menor que ${y}! Precisa pegar 1 emprestado da coluna do lado.`);
+        await askButton('⬅ Pegar 1 emprestado'); if (!alive) return;
+        const from = borrow(i); render(i);
+        say(from > i + 1 ? `A coluna das ${PLACE[i + 1]} tinha 0, então pegamos das ${PLACE[from]}: ela ficou com ${st.top[from]}, as ${PLACE[i + 1]} viraram 9, e as ${PLACE[i]} ficaram com ${st.top[i]}.`
+          : `As ${PLACE[from]} ficaram com ${st.top[from]}, e o ${st.top[i] - 10} virou ${st.top[i]}.`);
+        await wait(1800); if (!alive) return;
+      }
+      const t = st.top[i], d = t - y;
+      await step(`Coluna das ${PLACE[i]}: quanto é ${t} − ${y}?`, d, `Comece no ${y} e conte até chegar no ${t}.`, `${t} − ${y} = ${d}.`);
+      if (!alive) return;
+      st.res[i] = d; render(); sfx.pop();
+    }
+  }
+  async function solveMul(da, m) {
+    let carry = 0;
+    for (let i = 0; i < da.length && alive; i++) {
+      const p = da[i] * m + carry, last = i === da.length - 1;
+      render(i);
+      await step(`Coluna das ${PLACE[i]}: quanto é ${da[i]} × ${m}${carry ? ` + ${carry} (o que veio)` : ''}?`, p,
+        carry ? `Primeiro ${da[i]} × ${m} = ${da[i] * m}. Depois some ${carry}.` : `Olhe a tabuada do ${m}.`, `${da[i]} × ${m}${carry ? ` + ${carry}` : ''} = ${p}.`);
+      if (!alive) return;
+      const up = Math.floor(p / 10);
+      if (up && !last) { st.res[i] = p % 10; render(); say(`${p}! Escreve o ${p % 10} embaixo, e o ${up} vai para a coluna das ${PLACE[i + 1]}.`); await askButton(`⬆ Levar o ${up}`); st.note[i + 1] = up; carry = up; }
+      else if (up) { st.res[i] = p % 10; st.res[i + 1] = up; say(`Última coluna: ${p}. Escreve o ${p} inteiro!`); carry = 0; }
+      else { st.res[i] = p; carry = 0; }
+      render(); sfx.pop();
+    }
+  }
+  async function conta() {
+    P = problem(); allFirst = true;
+    const da = digitsUF(P.a), db = digitsUF(P.b), dr = digitsUF(P.res);
+    st = { L:Math.max(da.length, db.length, dr.length), orig:da.slice(), top:da.slice(), bot:db, res:[], note:[], struck:[] };
+    prog(); help(); render(); $('#aSum').textContent = '';
+    say(`Vamos armar ${P.a} ${P.op === '−' ? 'menos' : P.op === '×' ? 'vezes' : 'mais'} ${P.b}. Comece pelas unidades, na direita!`);
+    await wait(1500); if (!alive) return;
+    if (SK === 'add') await solveAdd(da, db); else if (SK === 'sub') await solveSub(da, db); else await solveMul(da, db[0]);
+    if (!alive) return;
+    record(SK, allFirst, { key:P.key });
+    render(); n++; prog(); sfx.yay(); confetti(25);
+    $('#aSum').textContent = `${P.a} ${P.op} ${P.b} = ${P.res}`;
+    say(allFirst ? `Perfeito! ${P.a} ${P.op} ${P.b} = ${P.res}.` : `Conseguimos! ${P.a} ${P.op} ${P.b} = ${P.res}.`);
+    await askButton(n < TOTAL ? 'Próxima conta ➜' : 'Terminar ⭐');
+    if (!alive) return;
+    if (n < TOTAL) conta(); else finishPhase(`Você armou ${TOTAL} contas na lousa! 🧮`);
+  }
+  conta();
+  if (DEBUG) window.__g = { get P() { return P; }, get st() { return st; } };
+  return { stop() { alive = false; }, hint() { if (activeAsk && activeAsk.hint) activeAsk.hint(); else say('Comece sempre pela direita, nas unidades, e resolva uma coluna de cada vez.'); } };
 };
 
 /* ================= ARENA: gem-grab battle, everything mixed ================= */
