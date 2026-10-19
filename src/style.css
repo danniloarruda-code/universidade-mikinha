@@ -52,7 +52,7 @@ button{font:inherit}
 .bar h2{font-size:1.5rem}
 
 /* map */
-.islands{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px}
+.islands{display:grid; grid-template-columns:repeat(auto-fill,minmax(min(200px,calc(50% - 7px)),1fr)); gap:14px}
 .island{display:flex; flex-direction:column; align-items:center; gap:3px; text-align:center; cursor:pointer; color:var(--ink);
   background:var(--white); border:4px solid var(--sand-edge); border-radius:20px; padding:14px 10px; box-shadow:0 5px 0 var(--sand-edge); transition:transform .12s}
 .island:hover:not([disabled]){transform:translateY(-3px) rotate(-1deg)}
@@ -93,7 +93,9 @@ button{font:inherit}
 .bluuIc.happy{animation:hop .45s ease 2}
 @keyframes hop{50%{transform:translateY(-12px) rotate(-6deg)}}
 #stageBox{position:relative; border-radius:18px; overflow:hidden; border:4px solid var(--sand-edge); background:var(--sand); box-shadow:0 6px 0 rgba(0,0,0,.2)}
-#stageBox canvas.cv{display:block; width:100%; height:auto; touch-action:none; cursor:pointer}
+#stageBox canvas.cv{display:block; width:auto; height:auto; max-width:100%; max-height:calc(100dvh - 210px); margin:0 auto; touch-action:none; cursor:pointer}
+.rotate{display:none; text-align:center; font-weight:800; background:var(--gold); color:var(--ink); border-radius:14px; padding:8px 12px}
+@media (orientation:portrait) and (max-width:600px){ #sGame.canvasMode .rotate{display:block} }
 .touch{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap}
 .touch .grp{display:flex; gap:8px; align-items:center}
 .tbtn{font-family:var(--display); font-size:1.6rem; width:62px; height:56px; border:0; border-radius:14px; background:var(--white); color:var(--ink); box-shadow:0 5px 0 var(--sand-edge); cursor:pointer; touch-action:none; user-select:none}
@@ -223,4 +225,21 @@ table.steps th{background:var(--sand-deep); font-family:var(--display); font-wei
 .upg{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important; transition:none!important}}
-@media (max-width:520px){ body{font-size:16px} .chave.big{font-size:2rem} .keys{grid-template-columns:repeat(3,56px)} }
+@media (max-width:520px){ body{font-size:16px} .chave.big{font-size:2rem} .keys{grid-template-columns:repeat(3,56px)} .island{padding:10px 6px} .island .ic{font-size:2.4rem} .island .nm{font-size:1.05rem} }
+
+/* touch screens: the controls float over the bottom corners of the game, like a phone game */
+@media (pointer:coarse){
+  #sGame.canvasMode .touch{position:fixed; left:0; right:0; bottom:0; padding:0 12px calc(env(safe-area-inset-bottom,0px) + 12px); pointer-events:none; z-index:12; align-items:flex-end}
+  #sGame.canvasMode .touch .tbtn{pointer-events:auto; opacity:.82}
+}
+/* short screens (phone lying down): compact top bar and the question box opens over the game */
+@media (max-height:520px){
+  body{padding-block:6px}
+  .stage{gap:6px}
+  .gbar{padding:4px 8px} .gbar h2{font-size:1rem} .gbar .btn.small{font-size:.8rem; padding:.3em .55em}
+  .bubble{padding:4px 10px} .bubble .say{font-size:.9rem; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .bluuIc{width:36px; height:36px}
+  #stageBox canvas.cv{max-height:calc(100dvh - 120px)}
+  #askBox:not([hidden]){position:fixed; left:8px; right:8px; bottom:8px; max-height:calc(100dvh - 16px); overflow:auto; z-index:15}
+  .askq{font-size:1.1rem} .choice{font-size:1.5rem} .keys button{height:42px} .padv{font-size:1.8rem}
+}

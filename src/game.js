@@ -238,6 +238,7 @@ function ask({ q, a, skill, key = '', hint = '', reveal = '', choices = null }) 
       return false;
     }, hint() { usedHint = true; say(hint); } };
     say(q); draw();
+    box.scrollIntoView({ block:'nearest', behavior:'smooth' });
   });
 }
 /* asks the name of a flashing part of the bracket; renders chips into container */
@@ -434,7 +435,7 @@ function setTouch(kind) {
     ['pointerup','pointercancel','lostpointercapture'].forEach(ev => btn.addEventListener(ev, () => { K[k] = 0; }));
   });
 }
-function makeCanvas(W, H) { const box = $('#stageBox'); box.innerHTML = ''; const cv = document.createElement('canvas'); cv.width = W; cv.height = H; cv.className = 'cv'; box.append(cv); return { cv, c:cv.getContext('2d') }; }
+function makeCanvas(W, H) { const box = $('#stageBox'); box.innerHTML = ''; $('#sGame').classList.add('canvasMode'); const cv = document.createElement('canvas'); cv.width = W; cv.height = H; cv.className = 'cv'; box.append(cv); return { cv, c:cv.getContext('2d') }; }
 function canvasPoint(cv, e) { const r = cv.getBoundingClientRect(); return { x:(e.clientX - r.left) * cv.width / r.width, y:(e.clientY - r.top) * cv.height / r.height }; }
 function loop(fn) { let last = performance.now(), id; const step = now => { const dt = Math.min(.05, (now - last) / 1000); last = now; fn(dt, now / 1000); id = requestAnimationFrame(step); }; id = requestAnimationFrame(step); return () => cancelAnimationFrame(id); }
 const blocked = () => !$('#overlay').hidden || !!activeAsk;
@@ -534,6 +535,7 @@ function renderTeacher() {
 function enterIsland(i) {
   const I = ISLANDS[i];
   show('sGame'); bluuIcon(); refreshToggles();
+  $('#sGame').classList.remove('canvasMode');
   $('#gName').textContent = `${I.icon} ${I.name}`; $('#gInfo').textContent = ''; $('#stageBox').innerHTML = ''; $('#askBox').hidden = true; $('#touch').innerHTML = '';
   $('#say').textContent = '';
   overlay(`<div class="big">${I.icon}</div><h2>${I.name}</h2><p>${I.intro}</p><div class="ctrls">${I.ctrl.map(c => `<span>${c}</span>`).join('')}</div><button class="btn gold" data-act="begin" data-i="${i}">Jogar ▶</button>`);
